@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>The Last Wile Human · 동물 애니메이션 검수</title>
+    <link rel="stylesheet" href="Tools/AnimationPreview/styles.css" />
+  </head>
+  <body>
+    <aside id="file-mode-warning" class="file-mode-warning" hidden>
+      이 파일을 직접 열면 브라우저가 PNG 로드를 차단할 수 있습니다.
+      프로젝트 루트의 <code>OpenAnimationPreview.cmd</code>로 실행하세요.
+    </aside>
+    <header class="toolbar">
+      <div class="title-block">
+        <p class="eyebrow">THE LAST WILE HUMAN</p>
+        <h1>동물 애니메이션 검수</h1>
+        <p id="load-status" class="load-status" aria-live="polite">스프라이트를 불러오는 중…</p>
+      </div>
+
+      <div class="controls" aria-label="애니메이션 재생 제어">
+        <fieldset class="direction-control">
+          <legend>방향</legend>
+          <div id="direction-buttons" class="direction-buttons"></div>
+        </fieldset>
+
+        <div class="playback-control">
+          <button id="play-toggle" class="button button-primary" type="button">일시정지</button>
+          <button id="restart" class="button" type="button">처음부터</button>
+          <label class="range-label" for="speed">
+            배속 <output id="speed-output" for="speed">1.00×</output>
+          </label>
+          <input id="speed" type="range" min="0.25" max="2" step="0.05" value="1" />
+        </div>
+
+        <div class="option-control">
+          <label><input id="cycle-directions" type="checkbox" /> 8방향 자동 순환</label>
+          <label><input id="repeat-one-shots" type="checkbox" checked /> 1회 동작 반복 검수</label>
+          <label><input id="show-grid" type="checkbox" checked /> 셀 경계 표시</label>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary" aria-label="현재 검수 상태">
+        <div>
+          <span class="summary-label">현재 방향</span>
+          <strong id="current-direction">S · 남쪽</strong>
+        </div>
+        <div>
+          <span class="summary-label">표시 중</span>
+          <strong>곰 5 · 늑대 5 · 까마귀 4</strong>
+        </div>
+        <p>단축키: <kbd>Space</kbd> 재생/정지 · <kbd>R</kbd> 재시작 · <kbd>←</kbd><kbd>→</kbd> 방향 전환</p>
+      </section>
+
+      <div id="animal-sections"></div>
+    </main>
+
+    <template id="animation-card-template">
+      <article class="animation-card">
+        <header class="card-header">
+          <div>
+            <p class="animation-kind"></p>
+            <h3 class="animation-name"></h3>
+          </div>
+          <span class="frame-counter">1 / 1</span>
+        </header>
+        <div class="stage-wrap">
+          <canvas class="sprite-stage" width="256" height="256"></canvas>
+          <span class="pivot-marker" aria-hidden="true"></span>
+        </div>
+        <footer class="card-footer">
+          <span class="animation-meta"></span>
+          <a class="sheet-link" target="_blank" rel="noreferrer">원본 시트</a>
+        </footer>
+      </article>
+    </template>
+
+    <script>
+      window.SPRITE_ASSET_ROOT = "./Assets/Sprites/Animals";
+      if (location.protocol === "file:") {
+        document.querySelector("#file-mode-warning").hidden = false;
+      }
+    </script>
+    <script src="Tools/AnimationPreview/app.js"></script>
+  </body>
+</html>

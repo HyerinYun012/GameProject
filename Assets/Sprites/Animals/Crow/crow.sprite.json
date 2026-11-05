@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "animal": "crow",
+  "cell_size": [256, 256],
+  "directions": ["S", "SE", "E", "NE", "N", "NW", "W", "SW"],
+  "pivot": [128, 128],
+  "animations": {
+    "idle": { "file": "crow_idle.png", "frames": 4, "fps": 8, "loop": true, "description": "airborne idle" },
+    "walk": { "file": "crow_walk.png", "frames": 6, "fps": 12, "loop": true, "description": "flight movement" },
+    "hurt": { "file": "crow_hurt.png", "frames": 3, "fps": 12, "loop": false },
+    "death": { "file": "crow_death.png", "frames": 6, "fps": 10, "loop": false }
+  }
+}

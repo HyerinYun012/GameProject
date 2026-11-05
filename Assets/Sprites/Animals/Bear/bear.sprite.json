@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "animal": "bear",
+  "cell_size": [256, 256],
+  "directions": ["S", "SE", "E", "NE", "N", "NW", "W", "SW"],
+  "pivot": [128, 248],
+  "animations": {
+    "idle": { "file": "bear_idle.png", "frames": 4, "fps": 4, "loop": true },
+    "walk": { "file": "bear_walk.png", "frames": 6, "fps": 6, "loop": true },
+    "attack": { "file": "bear_attack.png", "frames": 6, "fps": 10, "loop": false },
+    "hurt": { "file": "bear_hurt.png", "frames": 3, "fps": 12, "loop": false },
+    "death": { "file": "bear_death.png", "frames": 6, "fps": 8, "loop": false }
+  }
+}
