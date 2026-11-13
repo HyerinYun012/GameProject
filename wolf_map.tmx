@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="80" height="120" tilewidth="32" tileheight="32" infinite="0" nextlayerid="18" nextobjectid="282">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="80" height="120" tilewidth="32" tileheight="32" infinite="0" nextlayerid="20" nextobjectid="403">
  <editorsettings>
-  <export format="json"/>
+  <export target="CrowGame/wolf_map.json" format="json"/>
  </editorsettings>
  <tileset firstgid="1" source="preview_sheet.tsx"/>
  <tileset firstgid="6427" source="../../Plants.tsx"/>
@@ -143,6 +143,402 @@
     <property name="solid" type="bool" value="true"/>
    </properties>
   </object>
+  <object id="316" name="tree_01" gid="7452" x="2127" y="2475" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="317" name="tree_01" gid="7452" x="2261" y="2477" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="318" name="tree_01" gid="7452" x="2375" y="2473" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="319" name="tree_01" gid="7452" x="1463" y="2865" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="320" name="tree_01" gid="7452" x="1655" y="2951" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="322" name="tree_01" gid="7452" x="2327" y="3265" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="323" name="tree_01" gid="7452" x="2401" y="3259" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="291" name="tree_01" gid="7452" x="617" y="2792.33" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="355" name="tree_01" gid="7452" x="275.545" y="2228.33" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="357" name="tree_01" gid="7452" x="112.879" y="2007" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="292" name="tree_01" gid="7452" x="831.667" y="3195" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="293" name="tree_01" gid="7452" x="934.333" y="3195" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="309" name="tree_01" gid="7452" x="1526.33" y="3545" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="294" name="tree_01" gid="7452" x="1037" y="3192.33" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="353" name="tree_01" gid="7452" x="1137" y="734.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="359" name="tree_01" gid="7452" x="1025" y="738.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="360" name="tree_01" gid="7452" x="1197" y="630.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="361" name="tree_01" gid="7452" x="1285" y="706.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="373" name="tree_01" gid="7452" x="1555" y="1020.76" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="374" name="tree_01" gid="7452" x="1795" y="1018.76" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="375" name="tree_01" gid="7452" x="1977" y="500.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="378" name="tree_01" gid="7452" x="2101" y="476.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="362" name="tree_01" gid="7452" x="155" y="666.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="363" name="tree_01" gid="7452" x="283" y="714.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="364" name="tree_01" gid="7452" x="425" y="626.758" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="307" name="tree_01" gid="7452" x="1401" y="3538.33" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="308" name="tree_01" gid="7452" x="2253" y="3268.33" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="295" name="tree_01" gid="7452" x="539.667" y="3093.67" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="296" name="tree_01" gid="7452" x="410.333" y="3095" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="297" name="tree_01" gid="7452" x="237" y="3097.67" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="298" name="tree_01" gid="7452" x="265" y="3293.67" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="299" name="tree_01" gid="7452" x="351.667" y="3292.33" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="300" name="tree_01" gid="7452" x="455.667" y="3295" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="301" name="tree_01" gid="7452" x="518.333" y="3543.67" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="304" name="tree_01" gid="7452" x="417" y="3547.67" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="305" name="tree_01" gid="7452" x="241" y="3547.67" width="63" height="73">
+   <properties>
+    <property name="collision_h" type="int" value="16"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="wood"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="tree"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
   <object id="278" name="fruit_tree_01" gid="7454" x="741.606" y="2475.42" width="118.061" height="120.788">
    <properties>
     <property name="choppable" type="bool" value="false"/>
@@ -151,7 +547,287 @@
     <property name="respawn_time" type="int" value="60"/>
    </properties>
   </object>
+  <object id="310" name="fruit_tree_01" gid="7454" x="1665.61" y="1015.42" width="118.061" height="120.788">
+   <properties>
+    <property name="choppable" type="bool" value="false"/>
+    <property name="fruit_count" type="int" value="3"/>
+    <property name="resource_type" value="fruit_tree"/>
+    <property name="respawn_time" type="int" value="60"/>
+   </properties>
+  </object>
+  <object id="282" name="fruit_tree_01" gid="7454" x="805.939" y="3110.09" width="118.061" height="120.788">
+   <properties>
+    <property name="choppable" type="bool" value="false"/>
+    <property name="fruit_count" type="int" value="3"/>
+    <property name="resource_type" value="fruit_tree"/>
+    <property name="respawn_time" type="int" value="60"/>
+   </properties>
+  </object>
   <object id="280" name="grass_01" gid="7459" x="898.273" y="2465.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="354" name="grass_01" gid="7459" x="130.394" y="2173.39" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="358" name="grass_01" gid="7459" x="231.727" y="2133.39" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="312" name="grass_01" gid="7459" x="1390.27" y="2465.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="313" name="grass_01" gid="7459" x="1516.27" y="2467.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="321" name="grass_01" gid="7459" x="1558.27" y="2869.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="324" name="grass_01" gid="7459" x="1454.27" y="2967.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="325" name="grass_01" gid="7459" x="2164.27" y="3275.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="328" name="grass_01" gid="7459" x="1752.27" y="3535.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="314" name="grass_01" gid="7459" x="2012.27" y="2479.64" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="284" name="grass_01" gid="7459" x="884.939" y="2782.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="366" name="grass_01" gid="7459" x="1980.94" y="1018.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="369" name="grass_01" gid="7459" x="1854.94" y="492.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="371" name="grass_01" gid="7459" x="1300.94" y="592.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="367" name="grass_01" gid="7459" x="1980.94" y="1018.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="368" name="grass_01" gid="7459" x="1886.94" y="1016.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="370" name="grass_01" gid="7459" x="1386.94" y="692.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="381" name="grass_01" gid="7459" x="534.939" y="610.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="382" name="grass_01" gid="7459" x="370.939" y="720.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="383" name="grass_01" gid="7459" x="186.939" y="722.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="285" name="grass_01" gid="7459" x="702.273" y="2782.97" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="306" name="grass_01" gid="7459" x="330.273" y="3540.3" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="302" name="grass_01" gid="7459" x="322.273" y="3096.3" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="286" name="grass_01" gid="7459" x="1035.61" y="2780.3" width="66.3939" height="64.3636">
+   <properties>
+    <property name="collision_h" type="int" value="14"/>
+    <property name="collision_w" type="int" value="24"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="fiber"/>
+    <property name="hp" type="int" value="1"/>
+    <property name="resource_type" value="grass"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="287" name="grass_01" gid="7459" x="983.606" y="3073.64" width="66.3939" height="64.3636">
    <properties>
     <property name="collision_h" type="int" value="14"/>
     <property name="collision_w" type="int" value="24"/>
@@ -173,28 +849,160 @@
     <property name="solid" type="bool" value="true"/>
    </properties>
   </object>
- </objectgroup>
- <objectgroup id="14" name="events"/>
- <objectgroup id="15" name="collision">
-  <object id="256" name="bush_collision" x="684" y="1916" width="716" height="144"/>
-  <object id="257" name="bush_collision" x="20" y="3744" width="1976" height="92"/>
-  <object id="258" name="bush_collision" x="2166" y="3776" width="394" height="66"/>
-  <object id="259" name="bush_collision" x="2508" y="7.63636" width="52" height="3828.36"/>
-  <object id="260" name="bush_collision" x="-9.09091" y="6.06061" width="93.9394" height="3830.3"/>
-  <object id="261" name="bush_collision" x="18.1818" y="15.1515" width="363.636" height="87.8788"/>
-  <object id="263" name="bush_collision" x="560.606" y="3.0303" width="2003.03" height="103.03"/>
-  <object id="264" name="bush_collision" x="150.667" y="1204" width="46.6667" height="50.6667"/>
-  <object id="265" name="bush_collision" x="256" y="1294.67" width="41.3333" height="54.6667"/>
-  <object id="266" name="bush_collision" x="412" y="1234.67" width="41.3333" height="52"/>
-  <object id="267" name="bush_collision" x="864" y="1241.33" width="38.6667" height="49.3333"/>
-  <object id="268" name="bush_collision" x="1121.21" y="1393.94" width="684.848" height="169.697"/>
-  <object id="269" name="bush_collision" x="72.7273" y="2715.15" width="269.697" height="100"/>
-  <object id="270" name="bush_collision" x="1448.48" y="3190.91" width="557.576" height="106.061"/>
-  <object id="271" name="water_collision" x="857.576" y="3430.3" width="296.97" height="100"/>
-  <object id="272" name="water_collision" x="1769.7" y="1881.82" width="706.061" height="172.727"/>
-  <object id="273" name="water_collision" x="1951.52" y="2839.39" width="281.818" height="103.03"/>
-  <object id="274" name="water_collision" x="538.667" y="1176" width="222.667" height="138.667"/>
-  <object id="279" name="fruit_tree_collision_01" x="771" y="2411.33" width="55.3333" height="50.6667"/>
+  <object id="356" name="rock_01" gid="7455" x="231.121" y="2011.12" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="315" name="rock_01" gid="7455" x="1630.27" y="2488.64" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="288" name="rock_01" gid="7455" x="788.939" y="2793.3" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="303" name="rock_01" gid="7455" x="534.273" y="3295.97" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="365" name="rock_01" gid="7455" x="1426.27" y="1043.97" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="376" name="rock_01" gid="7455" x="1872.27" y="399.97" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="377" name="rock_01" gid="7455" x="2020.27" y="393.97" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="372" name="rock_01" gid="7455" x="1478.27" y="595.97" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="379" name="rock_01" gid="7455" x="478.273" y="749.97" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="380" name="rock_01" gid="7455" x="276.273" y="615.97" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="289" name="rock_01" gid="7455" x="524.939" y="2797.3" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="290" name="rock_01" gid="7455" x="1079.61" y="3085.3" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="326" name="rock_01" gid="7455" x="1545.61" y="2963.3" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
+  <object id="327" name="rock_01" gid="7455" x="1631.61" y="3543.3" width="79.2727" height="84.4242">
+   <properties>
+    <property name="collision_h" type="int" value="24"/>
+    <property name="collision_w" type="int" value="40"/>
+    <property name="drop_count" type="int" value="2"/>
+    <property name="drop_item" value="stone"/>
+    <property name="hp" type="int" value="3"/>
+    <property name="resource_type" value="rock"/>
+    <property name="solid" type="bool" value="true"/>
+   </properties>
+  </object>
  </objectgroup>
  <layer id="5" name="plants4" width="80" height="120">
   <data encoding="csv">
@@ -694,10 +1502,228 @@
  </layer>
  <objectgroup id="17" name="fishing">
   <object id="276" x="3276" y="2588"/>
+  <object id="384" name="fishing_spot01" x="515" y="1124" width="290" height="51"/>
+  <object id="387" name="fishing_spot01" x="496" y="1317" width="290" height="51"/>
+  <object id="388" name="fishing_spot01" x="1734" y="1826" width="768" height="49"/>
+  <object id="391" name="fishing_spot01" x="1740" y="2060" width="768" height="49"/>
+  <object id="392" name="fishing_spot01" x="1878" y="2780" width="412" height="67"/>
+  <object id="395" name="fishing_spot01" x="1888.67" y="2953.33" width="412" height="67"/>
+  <object id="396" name="fishing_spot01" x="814" y="3356" width="412" height="67"/>
+  <object id="400" name="fishing_spot01" x="803.333" y="3532" width="412" height="67"/>
+  <object id="393" name="fishing_spot01" x="1882" y="2792" width="68" height="187"/>
+  <object id="397" name="fishing_spot01" x="782" y="3381.33" width="68" height="187"/>
+  <object id="398" name="fishing_spot01" x="1163.33" y="3380" width="68" height="187"/>
+  <object id="394" name="fishing_spot01" x="2240.67" y="2793.33" width="68" height="187"/>
+  <object id="389" name="fishing_spot01" x="2474" y="1838" width="36" height="239"/>
+  <object id="390" name="fishing_spot01" x="1714" y="1830" width="58" height="251"/>
+  <object id="385" name="fishing_spot01" x="759" y="1124" width="54" height="234"/>
+  <object id="386" name="fishing_spot01" x="486" y="1130" width="54" height="234"/>
+ </objectgroup>
+ <objectgroup id="14" name="events">
+  <object id="329" name="wolf_pup_rescue_01" type="wolf_event" gid="7465" x="599" y="2553" width="91.3333" height="106.667">
+   <properties>
+    <property name="event_type" value="wolf_pup_rescue"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="334" name="wolf_pup_rescue_01" type="wolf_event" gid="7465" x="2396.33" y="2596.33" width="91.3333" height="106.667">
+   <properties>
+    <property name="event_type" value="wolf_pup_rescue"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="338" name="wolf_pup_rescue_01" type="wolf_event" gid="7465" x="1604.88" y="2112.27" width="91.3333" height="106.667">
+   <properties>
+    <property name="event_type" value="wolf_pup_rescue"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="342" name="wolf_pup_rescue_01" type="wolf_event" gid="7465" x="582.273" y="1487.76" width="91.3333" height="106.667">
+   <properties>
+    <property name="event_type" value="wolf_pup_rescue"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="350" name="wolf_pup_rescue_01" type="wolf_event" gid="7465" x="1158.03" y="240.576" width="91.3333" height="106.667">
+   <properties>
+    <property name="event_type" value="wolf_pup_rescue"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="330" name="hunter_trap_01" type="wolf_event" gid="7464" x="177" y="3155.24" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="332" name="hunter_trap_01" type="wolf_event" gid="7464" x="217" y="3353.91" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="333" name="hunter_trap_01" type="wolf_event" gid="7464" x="197" y="3617.91" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="337" name="hunter_trap_01" type="wolf_event" gid="7464" x="2372.76" y="3354.27" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="344" name="hunter_trap_01" type="wolf_event" gid="7464" x="1887.91" y="1460.33" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="345" name="hunter_trap_01" type="wolf_event" gid="7464" x="2193.97" y="608.818" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="348" name="hunter_trap_01" type="wolf_event" gid="7464" x="1500.03" y="711.848" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="349" name="hunter_trap_01" type="wolf_event" gid="7464" x="236.394" y="887.606" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="346" name="hunter_trap_01" type="wolf_event" gid="7464" x="2193.97" y="608.818" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="347" name="hunter_trap_01" type="wolf_event" gid="7464" x="2193.97" y="608.818" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="343" name="hunter_trap_01" type="wolf_event" gid="7464" x="2333.36" y="1720.94" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="339" name="hunter_trap_01" type="wolf_event" gid="7464" x="1772.76" y="3608.82" width="83.9394" height="90.1212">
+   <properties>
+    <property name="event_type" value="hunter_trap_remove"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="reward" type="int" value="5"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="331" name="wolf_den_01" type="wolf_event" gid="7466" x="81" y="2358.33" width="116" height="108">
+   <properties>
+    <property name="after_sprite" value="assets/wolf_den_repaired (1).png"/>
+    <property name="event_type" value="wolf_den_repair"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="required_tool" value="pickaxe"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="340" name="wolf_den_01" type="wolf_event" gid="7466" x="1442" y="2570.33" width="116" height="108">
+   <properties>
+    <property name="after_sprite" value="assets/wolf_den_repaired (1).png"/>
+    <property name="event_type" value="wolf_den_repair"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="required_tool" value="pickaxe"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+  <object id="351" name="wolf_den_01" type="wolf_event" gid="7466" x="1004.55" y="625.788" width="116" height="108">
+   <properties>
+    <property name="after_sprite" value="assets/wolf_den_repaired (1).png"/>
+    <property name="event_type" value="wolf_den_repair"/>
+    <property name="is_on" type="bool" value="false"/>
+    <property name="required_tool" value="pickaxe"/>
+    <property name="reward" type="int" value="15"/>
+    <property name="species" value="wolf"/>
+   </properties>
+  </object>
+ </objectgroup>
+ <objectgroup id="15" name="collision">
+  <object id="256" name="bush_collision" x="684" y="1916" width="716" height="144"/>
+  <object id="257" name="bush_collision" x="20" y="3744" width="1976" height="92"/>
+  <object id="258" name="bush_collision" x="2166" y="3776" width="394" height="66"/>
+  <object id="259" name="bush_collision" x="2508" y="7.63636" width="52" height="3828.36"/>
+  <object id="260" name="bush_collision" x="-9.09091" y="6.06061" width="93.9394" height="3830.3"/>
+  <object id="261" name="bush_collision" x="18.1818" y="15.1515" width="363.636" height="87.8788"/>
+  <object id="263" name="bush_collision" x="560.606" y="3.0303" width="2003.03" height="103.03"/>
+  <object id="264" name="bush_collision" x="150.667" y="1204" width="46.6667" height="50.6667"/>
+  <object id="265" name="bush_collision" x="256" y="1294.67" width="41.3333" height="54.6667"/>
+  <object id="266" name="bush_collision" x="412" y="1234.67" width="41.3333" height="52"/>
+  <object id="267" name="bush_collision" x="864" y="1241.33" width="38.6667" height="49.3333"/>
+  <object id="268" name="bush_collision" x="1121.21" y="1393.94" width="684.848" height="169.697"/>
+  <object id="269" name="bush_collision" x="72.7273" y="2715.15" width="269.697" height="100"/>
+  <object id="270" name="bush_collision" x="1448.48" y="3190.91" width="557.576" height="106.061"/>
+  <object id="271" name="water_collision" x="857.576" y="3430.3" width="296.97" height="100"/>
+  <object id="272" name="water_collision" x="1769.7" y="1881.82" width="706.061" height="172.727"/>
+  <object id="273" name="water_collision" x="1951.52" y="2839.39" width="281.818" height="103.03"/>
+  <object id="274" name="water_collision" x="538.667" y="1176" width="222.667" height="138.667"/>
+  <object id="279" name="fruit_tree_collision_01" x="771" y="2411.33" width="55.3333" height="50.6667"/>
+  <object id="311" name="fruit_tree_collision_01" x="1697" y="951.333" width="55.3333" height="50.6667"/>
+  <object id="283" name="fruit_tree_collision_01" x="835" y="3048" width="55.3333" height="50.6667"/>
+  <object id="335" name="wolf_den_collision" x="106" y="2281" width="66" height="55"/>
+  <object id="341" name="wolf_den_collision" x="1466" y="2493" width="66" height="55"/>
+  <object id="352" name="wolf_den_collision" x="1030" y="548.152" width="66" height="55"/>
  </objectgroup>
  <objectgroup id="10" name="spawn">
   <object id="72" name="player_start" x="2081.67" y="3800.08">
    <point/>
+  </object>
+ </objectgroup>
+ <objectgroup id="19" name="transitions">
+  <object id="402" name="exit_to_bear" type="map_exit" x="385.334" y="2.00017" width="173.333" height="121.333">
+   <properties>
+    <property name="target_map" value="bear_map.json"/>
+    <property name="target_spawn" value="player_start"/>
+   </properties>
   </object>
  </objectgroup>
 </map>
