@@ -11,12 +11,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from CrowGame.game_model import InventoryModel, ItemStack, SlotRef  # noqa: E402
+from CrowGame.game_model import (  # noqa: E402
+    CRAFTING_RECIPES,
+    InventoryModel,
+    ItemStack,
+    SlotRef,
+)
 from CrowGame.main import (  # noqa: E402
     MAX_HP,
     MAX_SP,
     DragState,
     Game,
+    GameUI,
     Player,
     WorldDrop,
     WorldEntity,
@@ -37,6 +43,7 @@ def make_game() -> Game:
     game.model = InventoryModel()
     game.player = Player(sprite_sheet=None)
     game.inventory_open = True
+    game.crafting_open = False
     game.drag = None
     game.toast = ""
     game.toast_error = False
@@ -61,6 +68,41 @@ def place_near_entity(game: Game, map_name: str, entity_type: str) -> WorldEntit
 
 
 class GameActionTests(unittest.TestCase):
+    def test_crafting_ui_has_thirteen_clickable_cards(self) -> None:
+        ui = GameUI.__new__(GameUI)
+        cards = ui.crafting_cards()
+        self.assertEqual(13, len(cards))
+        self.assertEqual(
+            [recipe for recipe, _rect in cards],
+            [ui.crafting_recipe_at(rect.cx, rect.cy) for _recipe, rect in cards],
+        )
+
+    def test_c_key_toggles_crafting_and_closes_inventory(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        game._key_down(SimpleNamespace(key=p2.SDLK_c, repeat=0))
+        self.assertTrue(game.crafting_open)
+        self.assertFalse(game.inventory_open)
+        game._key_down(SimpleNamespace(key=p2.SDLK_c, repeat=0))
+        self.assertFalse(game.crafting_open)
+
+    def test_crafting_recipe_adds_item_to_inventory(self) -> None:
+        game = make_game()
+        game.model.add_item("wood", 1)
+        game.model.add_item("fiber", 1)
+        recipe = next(
+            recipe for recipe in CRAFTING_RECIPES
+            if recipe.output_item_id == "torch"
+        )
+
+        game._craft_recipe(recipe)
+
+        self.assertEqual(1, game.model.item_count("torch"))
+        self.assertEqual(0, game.model.item_count("wood"))
+        self.assertEqual(0, game.model.item_count("fiber"))
+        self.assertIn("제작 완료", game.toast)
+
     def test_player_starts_with_full_hp_and_sp(self) -> None:
         player = Player(sprite_sheet=None)
         self.assertEqual(MAX_HP, player.hp)

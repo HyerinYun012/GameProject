@@ -11,6 +11,7 @@ if str(PROJECT_DIR) not in sys.path:
 
 from game_model import (  # noqa: E402
     ARMOR_ITEM_IDS,
+    CRAFTING_RECIPES,
     HOTBAR_SIZE,
     INVENTORY_SIZE,
     ITEMS,
@@ -28,7 +29,7 @@ class InventoryModelTests(unittest.TestCase):
         self.assertTrue((PROJECT_DIR / "assets" / "apple.png").exists())
 
     def test_definition_and_demo_sizes(self) -> None:
-        self.assertEqual(16, len(ITEMS))
+        self.assertEqual(17, len(ITEMS))
         self.assertEqual(10, len(TOOL_ITEM_IDS))
         self.assertEqual({"light_armor"}, ARMOR_ITEM_IDS)
         model = InventoryModel.demo()
@@ -37,6 +38,52 @@ class InventoryModelTests(unittest.TestCase):
         self.assertEqual(len(TOOL_ITEM_IDS), len(occupied))
         self.assertTrue(all(stack.definition.category == "tool" for stack in occupied))
         self.assertEqual(INVENTORY_SIZE - len(TOOL_ITEM_IDS), model.slots.count(None))
+
+    def test_all_requested_crafting_recipes_are_registered(self) -> None:
+        recipes = {
+            recipe.output_item_id: dict(recipe.ingredients)
+            for recipe in CRAFTING_RECIPES
+        }
+        self.assertEqual(13, len(recipes))
+        self.assertEqual({"wood": 2, "stone": 2, "fiber": 1}, recipes["stone_axe"])
+        self.assertEqual({"wood": 1, "stone": 2, "fiber": 1}, recipes["stone_pickaxe"])
+        self.assertEqual({"wood": 2, "fiber": 1}, recipes["wooden_spear"])
+        self.assertEqual({"wood": 2, "fiber": 3}, recipes["light_armor"])
+        self.assertEqual({"wood": 2, "stone": 3}, recipes["campfire"])
+        self.assertEqual({"fiber": 4, "wood": 1}, recipes["travel_bedding"])
+        self.assertEqual({"wood": 2, "fiber": 2}, recipes["fishing_rod"])
+
+    def test_crafting_atomically_consumes_materials_and_adds_output(self) -> None:
+        model = InventoryModel()
+        model.add_item("wood", 2)
+        model.add_item("stone", 2)
+        model.add_item("fiber", 1)
+        recipe = next(
+            recipe for recipe in CRAFTING_RECIPES
+            if recipe.output_item_id == "stone_axe"
+        )
+
+        self.assertTrue(model.craft(recipe))
+        self.assertEqual(0, model.item_count("wood"))
+        self.assertEqual(0, model.item_count("stone"))
+        self.assertEqual(0, model.item_count("fiber"))
+        self.assertEqual(1, model.item_count("stone_axe"))
+
+    def test_crafting_failure_never_consumes_materials(self) -> None:
+        model = InventoryModel()
+        model.slots[0] = ItemStack("wood", 3)
+        model.slots[1] = ItemStack("fiber", 2)
+        for index in range(2, INVENTORY_SIZE):
+            model.slots[index] = ItemStack("wooden_sword")
+        recipe = next(
+            recipe for recipe in CRAFTING_RECIPES
+            if recipe.output_item_id == "wooden_axe"
+        )
+
+        self.assertFalse(model.craft(recipe))
+        self.assertEqual(3, model.item_count("wood"))
+        self.assertEqual(2, model.item_count("fiber"))
+        self.assertEqual(0, model.item_count("wooden_axe"))
 
     def test_hotbar_is_the_first_five_inventory_slots(self) -> None:
         model = InventoryModel.demo()

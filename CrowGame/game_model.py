@@ -28,6 +28,16 @@ class ItemDefinition:
     action: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class CraftingRecipe:
+    output_item_id: str
+    ingredients: tuple[tuple[str, int], ...]
+
+    @property
+    def output(self) -> ItemDefinition:
+        return ITEMS[self.output_item_id]
+
+
 ITEMS: dict[str, ItemDefinition] = {
     "wooden_sword": ItemDefinition("wooden_sword", "나무 검", "wooden sword.png", "tool", action="attack"),
     "stone_sword": ItemDefinition("stone_sword", "돌 검", "Stone Sword.png", "tool", action="attack"),
@@ -40,14 +50,31 @@ ITEMS: dict[str, ItemDefinition] = {
     "wooden_spear": ItemDefinition("wooden_spear", "나무 창", "Wooden Spear.png", "tool", action="attack"),
     "stone_spear": ItemDefinition("stone_spear", "돌 창", "Stone Spear.png", "tool", action="attack"),
     "light_armor": ItemDefinition("light_armor", "간이 갑옷", "Light armor.png", "armor", defense=4),
-    "wood": ItemDefinition("wood", "나무", "wood.png", "material", max_stack=99),
+    "wood": ItemDefinition("wood", "나뭇가지", "wood.png", "material", max_stack=99),
     "stone": ItemDefinition("stone", "돌", "stone.png", "material", max_stack=99),
     "fiber": ItemDefinition("fiber", "섬유", "fiber.png", "material", max_stack=99),
     "fruit": ItemDefinition(
         "fruit", "사과", "apple.png", "material", max_stack=99
     ),
-    "travel_bedding": ItemDefinition("travel_bedding", "여행 침구", "travel bedding set.png", "utility"),
+    "travel_bedding": ItemDefinition("travel_bedding", "간이 침구", "travel bedding set.png", "utility"),
+    "campfire": ItemDefinition("campfire", "모닥불", "bonfire.png", "utility"),
 }
+
+CRAFTING_RECIPES: tuple[CraftingRecipe, ...] = (
+    CraftingRecipe("stone_axe", (("wood", 2), ("stone", 2), ("fiber", 1))),
+    CraftingRecipe("stone_pickaxe", (("wood", 1), ("stone", 2), ("fiber", 1))),
+    CraftingRecipe("wooden_spear", (("wood", 2), ("fiber", 1))),
+    CraftingRecipe("light_armor", (("wood", 2), ("fiber", 3))),
+    CraftingRecipe("torch", (("wood", 1), ("fiber", 1))),
+    CraftingRecipe("campfire", (("wood", 2), ("stone", 3))),
+    CraftingRecipe("travel_bedding", (("fiber", 4), ("wood", 1))),
+    CraftingRecipe("wooden_sword", (("wood", 2), ("fiber", 1))),
+    CraftingRecipe("stone_sword", (("wood", 1), ("stone", 2), ("fiber", 1))),
+    CraftingRecipe("stone_spear", (("wood", 2), ("stone", 2), ("fiber", 1))),
+    CraftingRecipe("fishing_rod", (("wood", 2), ("fiber", 2))),
+    CraftingRecipe("wooden_axe", (("wood", 1), ("fiber", 1))),
+    CraftingRecipe("wooden_pickaxe", (("wood", 2), ("fiber", 1))),
+)
 
 TOOL_ITEM_IDS = frozenset(item_id for item_id, item in ITEMS.items() if item.category == "tool")
 ARMOR_ITEM_IDS = frozenset(item_id for item_id, item in ITEMS.items() if item.category == "armor")
@@ -257,6 +284,38 @@ class InventoryModel:
                 self.slots[index] = None
         return count - remaining
 
+    def item_count(self, item_id: str) -> int:
+        if item_id not in ITEMS:
+            raise KeyError(f"Unknown item: {item_id}")
+        return sum(
+            stack.count
+            for stack in self.slots
+            if stack is not None and stack.item_id == item_id
+        )
+
+    def has_recipe_ingredients(self, recipe: CraftingRecipe) -> bool:
+        return all(
+            self.item_count(item_id) >= needed
+            for item_id, needed in recipe.ingredients
+        )
+
+    def craft(self, recipe: CraftingRecipe) -> bool:
+        """Atomically consume materials and add one crafted item."""
+        if not self.has_recipe_ingredients(recipe):
+            return False
+        snapshot = [
+            None if stack is None else ItemStack(stack.item_id, stack.count)
+            for stack in self.slots
+        ]
+        for item_id, needed in recipe.ingredients:
+            if self.remove_item(item_id, needed) != needed:
+                self.slots = snapshot
+                return False
+        if self.add_item(recipe.output_item_id, 1) != 0:
+            self.slots = snapshot
+            return False
+        return True
+
     def try_move(self, source: SlotRef, target: SlotRef) -> bool:
         """Move, merge, or swap two slots without ever losing an item."""
         source = self.canonical_ref(source)
@@ -290,7 +349,7 @@ class InventoryModel:
 
 
 __all__ = [
-    "ARMOR_ITEM_IDS", "DEMO_LOADOUT", "HOTBAR_SIZE", "INVENTORY_SIZE", "ITEMS",
-    "STARTING_TOOL_LOADOUT", "TOOL_ITEM_IDS", "InventoryModel", "ItemDefinition",
-    "ItemStack", "SlotRef",
+    "ARMOR_ITEM_IDS", "CRAFTING_RECIPES", "DEMO_LOADOUT", "HOTBAR_SIZE",
+    "INVENTORY_SIZE", "ITEMS", "STARTING_TOOL_LOADOUT", "TOOL_ITEM_IDS",
+    "CraftingRecipe", "InventoryModel", "ItemDefinition", "ItemStack", "SlotRef",
 ]

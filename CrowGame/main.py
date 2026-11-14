@@ -11,7 +11,14 @@ from typing import Callable
 import pico2d as p2
 
 try:  # Works both as ``python main.py`` and ``python -m CrowGame.main``.
-    from .game_model import ITEMS, InventoryModel, ItemStack, SlotRef
+    from .game_model import (
+        CRAFTING_RECIPES,
+        ITEMS,
+        CraftingRecipe,
+        InventoryModel,
+        ItemStack,
+        SlotRef,
+    )
     from .map_system import (
         FIRST_MAP,
         GID_DIAGONAL_FLIP,
@@ -24,7 +31,14 @@ try:  # Works both as ``python main.py`` and ``python -m CrowGame.main``.
         load_map_data,
     )
 except ImportError:  # pragma: no cover - exercised by the normal command file.
-    from game_model import ITEMS, InventoryModel, ItemStack, SlotRef
+    from game_model import (
+        CRAFTING_RECIPES,
+        ITEMS,
+        CraftingRecipe,
+        InventoryModel,
+        ItemStack,
+        SlotRef,
+    )
     from map_system import (
         FIRST_MAP,
         GID_DIAGONAL_FLIP,
@@ -447,6 +461,7 @@ class Player:
 
 class GameUI:
     INVENTORY_RECT = Rect(WINDOW_WIDTH / 2, 405, 630, 420)
+    CRAFTING_RECT = Rect(WINDOW_WIDTH / 2, 370, 1140, 590)
     HOTBAR_RECT = Rect(WINDOW_WIDTH / 2, 87, 520, 173)
     TOOL_PANEL_RECT = Rect(1068, 76, 132, 131)
     ARMOR_PANEL_RECT = Rect(1207, 76, 132, 127)
@@ -502,6 +517,34 @@ class GameUI:
             (SlotRef.armor(), Rect(self.ARMOR_PANEL_RECT.cx, 70, 78, 78)),
         ]
 
+    def crafting_cards(self) -> list[tuple[CraftingRecipe, Rect]]:
+        cards: list[tuple[CraftingRecipe, Rect]] = []
+        card_width = 532.0
+        card_height = 69.0
+        for index, recipe in enumerate(CRAFTING_RECIPES):
+            column = index % 2
+            row = index // 2
+            left = self.CRAFTING_RECT.left + 16 + column * 560
+            top = self.CRAFTING_RECT.top - 61 - row * 73
+            cards.append(
+                (
+                    recipe,
+                    Rect(
+                        left + card_width / 2,
+                        top - card_height / 2,
+                        card_width,
+                        card_height,
+                    ),
+                )
+            )
+        return cards
+
+    def crafting_recipe_at(self, x: float, y: float) -> CraftingRecipe | None:
+        for recipe, rect in self.crafting_cards():
+            if rect.contains(x, y):
+                return recipe
+        return None
+
     def slot_at(self, x: float, y: float, inventory_open: bool) -> SlotRef | None:
         groups: list[list[tuple[SlotRef, Rect]]] = []
         if inventory_open:
@@ -516,6 +559,7 @@ class GameUI:
     def draw(
         self,
         inventory_open: bool,
+        crafting_open: bool,
         drag: DragState | None,
         toast: str,
         toast_error: bool,
@@ -556,6 +600,9 @@ class GameUI:
             for ref, rect in self.inventory_slots():
                 self._draw_stack(ref, rect, skip)
 
+        if crafting_open:
+            self._draw_crafting()
+
         self.font.draw(1017, 146, "TOOL", (255, 225, 165))
         self.font.draw(1161, 146, "ARMOR", (255, 225, 165))
         self.font.draw(1151, 17, f"DEF {self.model.defense}", (235, 242, 255))
@@ -566,6 +613,84 @@ class GameUI:
             color = (255, 125, 115) if toast_error else (255, 237, 176)
             p2.draw_rectangle(376, 655, 904, 700, 28, 24, 22, 220, True)
             self.font.draw(405, 677, toast, color)
+
+    def _draw_crafting(self) -> None:
+        panel = self.CRAFTING_RECT
+        p2.draw_rectangle(
+            panel.left - 5,
+            panel.bottom - 5,
+            panel.right + 5,
+            panel.top + 5,
+            113,
+            76,
+            39,
+            248,
+            True,
+        )
+        p2.draw_rectangle(
+            panel.left,
+            panel.bottom,
+            panel.right,
+            panel.top,
+            43,
+            29,
+            23,
+            246,
+            True,
+        )
+        self.font_title.draw(panel.left + 22, panel.top - 37, "CRAFTING", (255, 226, 166))
+        self.font_small.draw(
+            panel.right - 225,
+            panel.top - 34,
+            "C 닫기 · 카드 클릭 제작",
+            (226, 207, 166),
+        )
+
+        for recipe, card in self.crafting_cards():
+            ready = self.model.has_recipe_ingredients(recipe)
+            border = (89, 157, 83) if ready else (126, 84, 50)
+            p2.draw_rectangle(
+                card.left,
+                card.bottom,
+                card.right,
+                card.top,
+                *border,
+                255,
+                True,
+            )
+            p2.draw_rectangle(
+                card.left + 2,
+                card.bottom + 2,
+                card.right - 2,
+                card.top - 2,
+                68,
+                43,
+                29,
+                248,
+                True,
+            )
+            self.item_images[recipe.output_item_id].draw(
+                card.left + 38, card.cy, 54, 54
+            )
+            self.font.draw(
+                card.left + 76,
+                card.top - 25,
+                recipe.output.label,
+                (255, 228, 174),
+            )
+            status = "제작 가능" if ready else "재료 부족"
+            status_color = (116, 232, 112) if ready else (255, 104, 96)
+            self.font_small.draw(card.right - 82, card.top - 23, status, status_color)
+            for ingredient_index, (item_id, needed) in enumerate(recipe.ingredients):
+                owned = self.model.item_count(item_id)
+                enough = owned >= needed
+                text_color = (117, 235, 112) if enough else (255, 105, 98)
+                self.font_small.draw(
+                    card.left + 76 + ingredient_index * 135,
+                    card.bottom + 12,
+                    f"{ITEMS[item_id].label} {needed}/{owned}",
+                    text_color,
+                )
 
     def draw_status_bars(self, player: Player) -> None:
         def draw_bar(
@@ -738,9 +863,10 @@ class Game:
         self.ending_timer = 0.0
         self.running = True
         self.inventory_open = False
+        self.crafting_open = False
         self.pressed: set[int] = set()
         self.drag: DragState | None = None
-        self.toast = "E: 채집·이벤트 상호작용  |  Space: 도구 사용  |  Tab: 인벤토리"
+        self.toast = "E: 상호작용 | Space: 도구 | Tab: 인벤토리 | C: 제작"
         self.toast_error = False
         self.toast_timer = 5.0
         self._load_map(FIRST_MAP, "player_start")
@@ -771,6 +897,11 @@ class Game:
                 self.pressed.discard(event.key)
             elif event.type == p2.SDL_MOUSEBUTTONDOWN and event.button == p2.SDL_BUTTON_LEFT:
                 x, y = event.x, WINDOW_HEIGHT - 1 - event.y
+                if self.crafting_open:
+                    recipe = self.ui.crafting_recipe_at(x, y)
+                    if recipe is not None:
+                        self._craft_recipe(recipe)
+                    continue
                 source = self.ui.slot_at(x, y, self.inventory_open)
                 if source:
                     stack = self.model.get(source)
@@ -794,6 +925,13 @@ class Game:
             self.running = False
         elif key == p2.SDLK_TAB:
             self.inventory_open = not self.inventory_open
+            if self.inventory_open:
+                self.crafting_open = False
+            self.drag = None
+        elif key == p2.SDLK_c:
+            self.crafting_open = not self.crafting_open
+            if self.crafting_open:
+                self.inventory_open = False
             self.drag = None
         elif key == p2.SDLK_SPACE:
             self._use_tool()
@@ -820,6 +958,17 @@ class Game:
         if tool.action and self.player.start_action(tool.action):
             labels = {"attack": "공격", "axe": "도끼질", "mine": "채광", "fish": "낚시"}
             self.show_toast(f"{tool.label}: {labels.get(tool.action, tool.action)}")
+
+    def _craft_recipe(self, recipe: CraftingRecipe) -> None:
+        if not self.model.has_recipe_ingredients(recipe):
+            self.show_toast(
+                f"{recipe.output.label}: 재료가 부족합니다", error=True
+            )
+            return
+        if not self.model.craft(recipe):
+            self.show_toast("인벤토리에 완성품을 넣을 공간이 없습니다", error=True)
+            return
+        self.show_toast(f"{recipe.output.label} 제작 완료")
 
     def _current_entities(self) -> list[WorldEntity]:
         return self.world_entities.setdefault(self.map_data.name, [])
@@ -1322,7 +1471,13 @@ class Game:
         p2.draw_rectangle(12, 678, 216, 710, 20, 25, 23, 205, True)
         self.ui.font.draw(24, 690, self.map_data.label, (255, 236, 183))
         self.ui.draw_status_bars(self.player)
-        self.ui.draw(self.inventory_open, self.drag, self.toast, self.toast_error)
+        self.ui.draw(
+            self.inventory_open,
+            self.crafting_open,
+            self.drag,
+            self.toast,
+            self.toast_error,
+        )
         if present:
             p2.update_canvas()
 
