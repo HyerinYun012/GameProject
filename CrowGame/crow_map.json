@@ -139,7 +139,7 @@
          "name":"transitions",
          "objects":[
                 {
-                 "height":121.333333333333,
+                 "height":90.6666666666663,
                  "id":256,
                  "name":"exit_to_wolf",
                  "opacity":1,
@@ -160,6 +160,42 @@
                  "width":197.333333333333,
                  "x":2357.33333333333,
                  "y":1.33333333333333
+                }, 
+                {
+                 "height":59.666666666667,
+                 "id":257,
+                 "name":"map_exit",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"target_map",
+                         "type":"string",
+                         "value":"ruined_town_demo.json"
+                        }, 
+                        {
+                         "name":"target_spawn",
+                         "type":"string",
+                         "value":"from_crow_forest"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":185,
+                 "x":610,
+                 "y":3779.33333333333
+                }, 
+                {
+                 "height":0,
+                 "id":258,
+                 "name":"from_wolf_forest",
+                 "opacity":1,
+                 "point":true,
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":2449.33333333333,
+                 "y":162.666666666667
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -182,12 +218,12 @@
                  "type":"",
                  "visible":true,
                  "width":0,
-                 "x":692,
-                 "y":3796
+                 "x":700,
+                 "y":3753.33333333333
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
@@ -7029,7 +7065,7 @@
          "y":0
         }],
  "nextlayerid":14,
- "nextobjectid":257,
+ "nextobjectid":259,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",

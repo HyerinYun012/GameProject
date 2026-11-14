@@ -5845,7 +5845,7 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"..\/preview_sheet.tsx"
+         "source":"assets\/preview_sheet.tsx"
         }, 
         {
          "firstgid":6427,
@@ -5853,7 +5853,7 @@
         }, 
         {
          "firstgid":7451,
-         "source":"..\/..\/..\/tile.tsx"
+         "source":"assets\/tile.tsx"
         }, 
         {
          "firstgid":7460,

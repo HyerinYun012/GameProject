@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="80" height="120" tilewidth="32" tileheight="32" infinite="0" nextlayerid="20" nextobjectid="403">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="80" height="120" tilewidth="32" tileheight="32" infinite="0" nextlayerid="20" nextobjectid="405">
  <editorsettings>
   <export target="CrowGame/wolf_map.json" format="json"/>
  </editorsettings>
- <tileset firstgid="1" source="preview_sheet.tsx"/>
+ <tileset firstgid="1" source="CrowGame/assets/preview_sheet.tsx"/>
  <tileset firstgid="6427" source="../../Plants.tsx"/>
- <tileset firstgid="7451" source="../../tile.tsx"/>
+ <tileset firstgid="7451" source="CrowGame/assets/tile.tsx"/>
  <tileset firstgid="7460" source="../../event.tsx"/>
  <layer id="1" name="ground" width="80" height="120">
   <data encoding="csv">
@@ -1714,15 +1714,24 @@
   <object id="352" name="wolf_den_collision" x="1030" y="548.152" width="66" height="55"/>
  </objectgroup>
  <objectgroup id="10" name="spawn">
-  <object id="72" name="player_start" x="2081.67" y="3800.08">
+  <object id="72" name="player_start" x="2081.67" y="3774.41">
    <point/>
   </object>
  </objectgroup>
  <objectgroup id="19" name="transitions">
-  <object id="402" name="exit_to_bear" type="map_exit" x="385.334" y="2.00017" width="173.333" height="121.333">
+  <object id="402" name="exit_to_bear" type="map_exit" x="385.334" y="2.00017" width="173.333" height="67.9997">
    <properties>
     <property name="target_map" value="bear_map.json"/>
     <property name="target_spawn" value="player_start"/>
+   </properties>
+  </object>
+  <object id="403" name="from_bear_forest" x="466.667" y="107.333">
+   <point/>
+  </object>
+  <object id="404" name="map_exit" x="1997" y="3786" width="170" height="56">
+   <properties>
+    <property name="target_map" value="crow_map.json"/>
+    <property name="target_spawn" value="from_wolf_forest"/>
    </properties>
   </object>
  </objectgroup>

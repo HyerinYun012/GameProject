@@ -7,7 +7,7 @@
  <tileset firstgid="6427" source="assets/Plants.tsx"/>
  <tileset firstgid="7451" source="assets/tile.tsx"/>
  <tileset firstgid="7460" source="assets/event.tsx"/>
- <tileset firstgid="7460" source="../../../Plants.tsx"/>
+ <tileset firstgid="7467" source="../../../Plants.tsx"/>
  <layer id="1" name="ground" width="80" height="120">
   <data encoding="csv">
 3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3567,3568,3569,3566,3566,3567,3568,3569,2020,4137,4138,4139,1731,1732,1712,
@@ -132,7 +132,7 @@
 2024,2025,2026,2025,2026,2024,2025,2026,2027,2024,2025,2026,2027,2024,2025,2026,1803,1804,1805,2020,2036,2552,2552,2553,1834,2025,2026,2027,2024,2025,2026,2027,2024,2025,2026,2027,2024,2025,2026,2027,3872,3873,3874,3875,3872,3873,3874,3875,3872,3873,3874,3875,3872,3873,3874,3875,3872,3873,3566,3567,3568,3569,3874,3875,3872,3873,3874,3875,3872,3873,3874,3875,3872,3873,3874,3875,3872,3873,3874,3875
 </data>
  </layer>
- <objectgroup id="10" name="spawn" visible="0">
+ <objectgroup id="10" name="spawn">
   <object id="72" name="player_start" x="692" y="3796">
    <point/>
   </object>
@@ -1576,7 +1576,7 @@
   </object>
  </objectgroup>
  <objectgroup id="8" name="Events">
-  <object id="32" name="Rescue a bird_01" gid="0" x="100.405" y="2991.05" width="93.2123" height="102.683" rotation="0.360064">
+  <object id="32" name="Rescue a bird_01" x="100.405" y="2991.05" width="93.2123" height="102.683" rotation="0.360064">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1585,7 +1585,7 @@
     <property name="reward" type="int" value="5"/>
    </properties>
   </object>
-  <object id="95" name="Rescue a bird_01" gid="0" x="523.072" y="2550.38" width="93.2123" height="102.683" rotation="0.360064">
+  <object id="95" name="Rescue a bird_01" x="523.072" y="2550.38" width="93.2123" height="102.683" rotation="0.360064">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1594,7 +1594,7 @@
     <property name="reward" type="int" value="5"/>
    </properties>
   </object>
-  <object id="105" name="Rescue a bird_01" gid="0" x="124.405" y="1835.05" width="93.2123" height="102.683" rotation="0.360064">
+  <object id="105" name="Rescue a bird_01" x="124.405" y="1835.05" width="93.2123" height="102.683" rotation="0.360064">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1603,7 +1603,7 @@
     <property name="reward" type="int" value="5"/>
    </properties>
   </object>
-  <object id="33" name="&#10;Bird's Nest_01" gid="0" x="752" y="3470" width="111" height="90">
+  <object id="33" name="&#10;Bird's Nest_01" x="752" y="3470" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1613,7 +1613,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="91" name="&#10;Bird's Nest_01" gid="0" x="1682.67" y="3586" width="111" height="90">
+  <object id="91" name="&#10;Bird's Nest_01" x="1682.67" y="3586" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1623,7 +1623,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="106" name="&#10;Bird's Nest_01" gid="0" x="1032.67" y="2500" width="111" height="90">
+  <object id="106" name="&#10;Bird's Nest_01" x="1032.67" y="2500" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1633,7 +1633,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="107" name="&#10;Bird's Nest_01" gid="0" x="108.667" y="502" width="111" height="90">
+  <object id="107" name="&#10;Bird's Nest_01" x="108.667" y="502" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1643,7 +1643,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="96" name="&#10;Bird's Nest_01" gid="0" x="2382.67" y="3166" width="111" height="90">
+  <object id="96" name="&#10;Bird's Nest_01" x="2382.67" y="3166" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1653,7 +1653,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="97" name="&#10;Bird's Nest_01" gid="0" x="1634.67" y="2996" width="111" height="90">
+  <object id="97" name="&#10;Bird's Nest_01" x="1634.67" y="2996" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1663,7 +1663,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="34" name="generator_01" gid="0" x="1003" y="3161" width="142" height="134">
+  <object id="34" name="generator_01" x="1003" y="3161" width="142" height="134">
    <properties>
     <property name="event_type" value="generator_switch"/>
     <property name="is_on" type="bool" value="true"/>
@@ -1676,28 +1676,28 @@ Bird's Nest</property>
   <object id="44" name="bush_collisionss" x="1132" y="3034.67" width="70.6667" height="104"/>
   <object id="46" name="bush_collision" x="805.333" y="3766.67" width="469.333" height="74.6667"/>
   <object id="92" name="bush_collision" x="454" y="2718" width="726" height="80"/>
-  <object id="93" name="generator_01" gid="0" x="65" y="2627" width="142" height="134">
+  <object id="93" name="generator_01" x="65" y="2627" width="142" height="134">
    <properties>
     <property name="event_type" value="generator_switch"/>
     <property name="is_on" type="bool" value="true"/>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="174" name="generator_01" gid="0" x="221" y="1347" width="142" height="134">
+  <object id="174" name="generator_01" x="221" y="1347" width="142" height="134">
    <properties>
     <property name="event_type" value="generator_switch"/>
     <property name="is_on" type="bool" value="true"/>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="175" name="generator_01" gid="0" x="1037" y="733" width="142" height="134">
+  <object id="175" name="generator_01" x="1037" y="733" width="142" height="134">
    <properties>
     <property name="event_type" value="generator_switch"/>
     <property name="is_on" type="bool" value="true"/>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="176" name="&#10;Bird's Nest_01" gid="0" x="1114.5" y="1587" width="111" height="90">
+  <object id="176" name="&#10;Bird's Nest_01" x="1114.5" y="1587" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1707,7 +1707,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="177" name="Rescue a bird_01" gid="0" x="111.394" y="868.659" width="93.2123" height="102.683" rotation="0.360064">
+  <object id="177" name="Rescue a bird_01" x="111.394" y="868.659" width="93.2123" height="102.683" rotation="0.360064">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1716,7 +1716,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="5"/>
    </properties>
   </object>
-  <object id="178" name="&#10;Bird's Nest_01" gid="0" x="1496.5" y="1093" width="111" height="90">
+  <object id="178" name="&#10;Bird's Nest_01" x="1496.5" y="1093" width="111" height="90">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
@@ -1726,7 +1726,7 @@ Bird's Nest</property>
     <property name="reward" type="int" value="10"/>
    </properties>
   </object>
-  <object id="179" name="Rescue a bird_01" gid="0" x="865.515" y="248.659" width="93.2123" height="102.683" rotation="0.360064">
+  <object id="179" name="Rescue a bird_01" x="865.515" y="248.659" width="93.2123" height="102.683" rotation="0.360064">
    <properties>
     <property name="collision_h" type="int" value="24"/>
     <property name="collision_w" type="int" value="40"/>
