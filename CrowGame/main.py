@@ -44,6 +44,11 @@ FRAME_WIDTH = 32
 FRAME_HEIGHT = 48
 CHARACTER_WIDTH = 160
 CHARACTER_HEIGHT = 240
+MAX_HP = 100.0
+MAX_SP = 100.0
+SP_DRAIN_PER_SECOND = 25.0
+SP_RECOVERY_PER_SECOND = 18.0
+SP_RUN_RESTART_THRESHOLD = 20.0
 CAMERA_ZOOM = 0.50
 INTERACTION_SCREEN_DISTANCE = 125.0
 AUTO_PICKUP_SCREEN_DISTANCE = 115.0
@@ -230,6 +235,11 @@ class Player:
         self.frame_index = 0
         self.frame_clock = 0.0
         self.dead = False
+        self.max_hp = MAX_HP
+        self.hp = self.max_hp
+        self.max_sp = MAX_SP
+        self.sp = self.max_sp
+        self.stamina_exhausted = False
 
     def _frames_for_state(self) -> tuple[SpriteFrame, ...]:
         if self.state == "idle":
@@ -286,7 +296,20 @@ class Player:
 
     def revive(self) -> None:
         self.dead = False
+        self.hp = self.max_hp
         self._set_state("idle")
+
+    def take_damage(self, amount: float) -> float:
+        if amount <= 0 or self.dead:
+            return 0.0
+        previous_hp = self.hp
+        self.hp = max(0.0, self.hp - amount)
+        damage_taken = previous_hp - self.hp
+        if self.hp <= 0:
+            self.start_action("death")
+        else:
+            self.start_action("hurt")
+        return damage_taken
 
     def update(
         self,
@@ -294,6 +317,10 @@ class Player:
         pressed: set[int],
         movement_resolver: Callable[[float, float, float, float], tuple[float, float]] | None = None,
     ) -> None:
+        running = False
+        moved = False
+        if self.sp <= 0:
+            self.stamina_exhausted = True
         if self.state not in ACTION_STATES:
             dx = float(p2.SDLK_d in pressed) - float(p2.SDLK_a in pressed)
             dy = float(p2.SDLK_w in pressed) - float(p2.SDLK_s in pressed)
@@ -308,10 +335,18 @@ class Player:
                 elif dy:
                     self.direction = "up" if dy > 0 else "down"
 
-                running = p2.SDLK_LSHIFT in pressed or p2.SDLK_RSHIFT in pressed
+                run_requested = (
+                    p2.SDLK_LSHIFT in pressed or p2.SDLK_RSHIFT in pressed
+                )
+                running = (
+                    run_requested
+                    and not self.stamina_exhausted
+                    and self.sp > 0
+                )
                 speed = self.RUN_SPEED if running else self.WALK_SPEED
                 move_x = dx * speed * dt
                 move_y = dy * speed * dt
+                previous_x, previous_y = self.x, self.y
                 if movement_resolver is None:
                     self.x += move_x
                     self.y += move_y
@@ -319,9 +354,22 @@ class Player:
                     self.y = max(155.0, min(WINDOW_HEIGHT - CHARACTER_HEIGHT - 15.0, self.y))
                 else:
                     self.x, self.y = movement_resolver(self.x, self.y, move_x, move_y)
+                moved = not (
+                    math.isclose(self.x, previous_x)
+                    and math.isclose(self.y, previous_y)
+                )
                 self._set_state("run" if running else "walk")
             else:
                 self._set_state("idle")
+
+        if running and moved:
+            self.sp = max(0.0, self.sp - SP_DRAIN_PER_SECOND * dt)
+            if self.sp <= 0:
+                self.stamina_exhausted = True
+        elif self.state in ("idle", "walk"):
+            self.sp = min(self.max_sp, self.sp + SP_RECOVERY_PER_SECOND * dt)
+            if self.stamina_exhausted and self.sp >= SP_RUN_RESTART_THRESHOLD:
+                self.stamina_exhausted = False
 
         self._advance_animation(dt)
 
@@ -519,6 +567,49 @@ class GameUI:
             p2.draw_rectangle(376, 655, 904, 700, 28, 24, 22, 220, True)
             self.font.draw(405, 677, toast, color)
 
+    def draw_status_bars(self, player: Player) -> None:
+        def draw_bar(
+            label: str,
+            bottom: float,
+            ratio: float,
+            fill_color: tuple[int, int, int],
+        ) -> None:
+            bar_left = 51.0
+            bar_right = 216.0
+            bar_top = bottom + 18.0
+            p2.draw_rectangle(
+                12, bottom - 4, 216, bar_top + 4, 18, 23, 22, 215, True
+            )
+            p2.draw_rectangle(
+                bar_left, bottom, bar_right, bar_top, 40, 42, 40, 255, True
+            )
+            fill_right = bar_left + (bar_right - bar_left) * min(max(ratio, 0.0), 1.0)
+            if fill_right > bar_left:
+                p2.draw_rectangle(
+                    bar_left,
+                    bottom,
+                    fill_right,
+                    bar_top,
+                    *fill_color,
+                    255,
+                    True,
+                )
+            p2.draw_rectangle(
+                bar_left,
+                bottom,
+                bar_right,
+                bar_top,
+                235,
+                224,
+                194,
+                255,
+                False,
+            )
+            self.font_small.draw(19, bottom + 2, label, (255, 238, 205))
+
+        draw_bar("HP", 649, player.hp / player.max_hp, (205, 54, 65))
+        draw_bar("SP", 617, player.sp / player.max_sp, (224, 171, 54))
+
     def _draw_stack(self, ref: SlotRef, rect: Rect, skip: SlotRef | None) -> None:
         canonical = self.model.canonical_ref(ref)
         if skip is not None and canonical == skip:
@@ -659,6 +750,17 @@ class Game:
         self.toast_error = error
         self.toast_timer = seconds
 
+    def damage_player(self, amount: float) -> float:
+        mitigated = max(1.0, amount - self.model.defense)
+        damage_taken = self.player.take_damage(mitigated)
+        if damage_taken <= 0:
+            return 0.0
+        if self.player.dead:
+            self.show_toast("HP가 모두 소진되어 쓰러졌습니다", error=True)
+        else:
+            self.show_toast("공격을 받아 HP가 감소했습니다", error=True)
+        return damage_taken
+
     def handle_events(self) -> None:
         for event in p2.get_events():
             if event.type == p2.SDL_QUIT:
@@ -699,10 +801,9 @@ class Game:
             if not self._interact_world():
                 self._use_tool()
         elif key == p2.SDLK_h:
-            if self.player.start_action("hurt"):
-                self.show_toast("피격 애니메이션")
+            self.damage_player(10.0)
         elif key == p2.SDLK_k:
-            if self.player.start_action("death"):
+            if self.player.take_damage(self.player.hp) > 0:
                 self.show_toast("쓰러졌습니다. R 키로 일어나기")
         elif key == p2.SDLK_r:
             self.player.revive()
@@ -1220,6 +1321,7 @@ class Game:
             self.ui.font_small.draw(prompt_x - 42, prompt_y + 10, f"E · {label}", (255, 245, 176))
         p2.draw_rectangle(12, 678, 216, 710, 20, 25, 23, 205, True)
         self.ui.font.draw(24, 690, self.map_data.label, (255, 236, 183))
+        self.ui.draw_status_bars(self.player)
         self.ui.draw(self.inventory_open, self.drag, self.toast, self.toast_error)
         if present:
             p2.update_canvas()

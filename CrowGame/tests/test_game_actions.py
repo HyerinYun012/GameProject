@@ -12,7 +12,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from CrowGame.game_model import InventoryModel, ItemStack, SlotRef  # noqa: E402
-from CrowGame.main import DragState, Game, Player, WorldDrop, WorldEntity  # noqa: E402
+from CrowGame.main import (  # noqa: E402
+    MAX_HP,
+    MAX_SP,
+    DragState,
+    Game,
+    Player,
+    WorldDrop,
+    WorldEntity,
+)
 from CrowGame.map_system import FIRST_MAP, load_map_data  # noqa: E402
 
 
@@ -53,6 +61,55 @@ def place_near_entity(game: Game, map_name: str, entity_type: str) -> WorldEntit
 
 
 class GameActionTests(unittest.TestCase):
+    def test_player_starts_with_full_hp_and_sp(self) -> None:
+        player = Player(sprite_sheet=None)
+        self.assertEqual(MAX_HP, player.hp)
+        self.assertEqual(MAX_SP, player.sp)
+
+    def test_running_drains_sp_and_exhaustion_forces_walking(self) -> None:
+        import pico2d as p2
+
+        player = Player(sprite_sheet=None)
+        resolver = lambda x, y, dx, dy: (x + dx, y + dy)
+        run_keys = {p2.SDLK_d, p2.SDLK_LSHIFT}
+
+        player.update(1.0, run_keys, resolver)
+        self.assertEqual("run", player.state)
+        self.assertEqual(75.0, player.sp)
+
+        player.sp = 0.0
+        player.stamina_exhausted = True
+        player.update(0.5, run_keys, resolver)
+        self.assertEqual("walk", player.state)
+        self.assertEqual(9.0, player.sp)
+
+        player.update(1.0, run_keys, resolver)
+        self.assertEqual("walk", player.state)
+        self.assertFalse(player.stamina_exhausted)
+        player.update(0.1, run_keys, resolver)
+        self.assertEqual("run", player.state)
+
+    def test_idle_and_walking_recover_sp(self) -> None:
+        player = Player(sprite_sheet=None)
+        player.sp = 50.0
+        player.update(1.0, set())
+        self.assertEqual(68.0, player.sp)
+
+    def test_enemy_damage_reduces_hp_and_zero_hp_causes_death(self) -> None:
+        player = Player(sprite_sheet=None)
+        self.assertEqual(25.0, player.take_damage(25.0))
+        self.assertEqual(75.0, player.hp)
+        self.assertEqual("hurt", player.state)
+
+        player.take_damage(75.0)
+        self.assertEqual(0.0, player.hp)
+        self.assertTrue(player.dead)
+        self.assertEqual("death", player.state)
+
+        player.revive()
+        self.assertEqual(MAX_HP, player.hp)
+        self.assertFalse(player.dead)
+
     def test_each_tool_dispatches_to_the_expected_action(self) -> None:
         cases = {
             "wooden_axe": "axe",
