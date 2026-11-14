@@ -177,19 +177,6 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual("wood", game.model.slots[0].item_id)
         self.assertEqual([], game.world_drops[FIRST_MAP])
 
-    def test_manual_pickup_uses_the_expanded_radius(self) -> None:
-        game = make_game()
-        game.player.x = 300
-        game.player.y = 300
-        game.world_drops[FIRST_MAP] = [
-            WorldDrop(ItemStack("stone", 1), 440, 300, pickup_enabled=False)
-        ]
-
-        game._pickup_nearby_item()
-
-        self.assertEqual("stone", game.model.slots[0].item_id)
-        self.assertEqual([], game.world_drops[FIRST_MAP])
-
     def test_resource_overflow_drop_auto_collects_on_approach(self) -> None:
         game = make_game()
         game.player.x = 250
@@ -199,6 +186,20 @@ class GameActionTests(unittest.TestCase):
         game._auto_pickup_world_items()
         self.assertEqual("stone", game.model.slots[0].item_id)
         self.assertEqual([], game.world_drops[FIRST_MAP])
+
+    def test_f_key_has_no_item_pickup_action(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        game.player.x = 250
+        game.player.y = 250
+        drop = WorldDrop(ItemStack("stone", 1), 250, 250)
+        game.world_drops[FIRST_MAP] = [drop]
+
+        game._key_down(SimpleNamespace(key=p2.SDLK_f, repeat=0))
+
+        self.assertIsNone(game.model.slots[0])
+        self.assertEqual([drop], game.world_drops[FIRST_MAP])
 
     def test_tree_requires_equipped_axe_and_disappears_after_three_hits(self) -> None:
         game = make_game()

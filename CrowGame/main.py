@@ -47,7 +47,6 @@ CHARACTER_HEIGHT = 240
 CAMERA_ZOOM = 0.50
 INTERACTION_SCREEN_DISTANCE = 125.0
 AUTO_PICKUP_SCREEN_DISTANCE = 115.0
-MANUAL_PICKUP_SCREEN_DISTANCE = 145.0
 THROWN_DROP_REARM_MOVEMENT = 30.0
 FRUIT_COOLDOWN_SECONDS = 30.0
 THROWN_DROP_MIN_SCREEN_DISTANCE = 80.0
@@ -699,8 +698,6 @@ class Game:
         elif key == p2.SDLK_e:
             if not self._interact_world():
                 self._use_tool()
-        elif key == p2.SDLK_f:
-            self._pickup_nearby_item()
         elif key == p2.SDLK_h:
             if self.player.start_action("hurt"):
                 self.show_toast("피격 애니메이션")
@@ -942,32 +939,6 @@ class Game:
             target_name = "도구" if target.area == "tool" else "방어구" if target.area == "armor" else "해당"
             self.show_toast(f"{target_name} 슬롯에 넣을 수 없는 아이템입니다", error=True)
         self.drag = None
-
-    def _pickup_nearby_item(self) -> None:
-        drops = self.world_drops.setdefault(self.map_data.name, [])
-        if not drops:
-            self.show_toast("근처에 주울 아이템이 없습니다", error=True, seconds=1.2)
-            return
-        nearby = min(
-            drops,
-            key=lambda drop: (drop.x - self.player.x) ** 2 + (drop.y - self.player.y) ** 2,
-        )
-        distance_squared = (nearby.x - self.player.x) ** 2 + (nearby.y - self.player.y) ** 2
-        pickup_radius = MANUAL_PICKUP_SCREEN_DISTANCE / self.camera_zoom
-        if distance_squared > pickup_radius ** 2:
-            self.show_toast("아이템에 더 가까이 가세요", error=True, seconds=1.2)
-            return
-        original_count = nearby.stack.count
-        remainder = self.model.add_item(nearby.stack.item_id, original_count)
-        collected = original_count - remainder
-        if collected == 0:
-            self.show_toast("인벤토리가 가득 찼습니다", error=True)
-            return
-        if remainder:
-            nearby.stack.count = remainder
-        else:
-            drops.remove(nearby)
-        self.show_toast(f"{nearby.stack.definition.label} {collected}개를 주웠습니다")
 
     def _auto_pickup_world_items(self) -> None:
         drops = self.world_drops.setdefault(self.map_data.name, [])
