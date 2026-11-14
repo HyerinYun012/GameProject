@@ -1,17 +1,41 @@
-"""Map-free CrowGame character, inventory, hotbar, and equipment prototype."""
+"""CrowGame four-map prototype with inventory, hotbar, and equipment UI."""
 
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import pico2d as p2
 
 try:  # Works both as ``python main.py`` and ``python -m CrowGame.main``.
     from .game_model import ITEMS, InventoryModel, ItemStack, SlotRef
+    from .map_system import (
+        FIRST_MAP,
+        GID_DIAGONAL_FLIP,
+        GID_HORIZONTAL_FLIP,
+        GID_VERTICAL_FLIP,
+        MapData,
+        TileSpriteDefinition,
+        WorldEntityDefinition,
+        WorldRect,
+        load_map_data,
+    )
 except ImportError:  # pragma: no cover - exercised by the normal command file.
     from game_model import ITEMS, InventoryModel, ItemStack, SlotRef
+    from map_system import (
+        FIRST_MAP,
+        GID_DIAGONAL_FLIP,
+        GID_HORIZONTAL_FLIP,
+        GID_VERTICAL_FLIP,
+        MapData,
+        TileSpriteDefinition,
+        WorldEntityDefinition,
+        WorldRect,
+        load_map_data,
+    )
 
 
 WINDOW_WIDTH = 1280
@@ -20,6 +44,15 @@ FRAME_WIDTH = 32
 FRAME_HEIGHT = 48
 CHARACTER_WIDTH = 160
 CHARACTER_HEIGHT = 240
+CAMERA_ZOOM = 0.50
+INTERACTION_SCREEN_DISTANCE = 125.0
+AUTO_PICKUP_SCREEN_DISTANCE = 115.0
+MANUAL_PICKUP_SCREEN_DISTANCE = 145.0
+THROWN_DROP_REARM_MOVEMENT = 30.0
+FRUIT_COOLDOWN_SECONDS = 30.0
+THROWN_DROP_MIN_SCREEN_DISTANCE = 80.0
+THROWN_DROP_MAX_SCREEN_DISTANCE = 130.0
+THROWN_DROP_SCREEN_SIZE = 76.0
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 GENERATED_ICON_DIR = Path(__file__).resolve().parent / "generated" / "icons"
 CHARACTER_SHEET = (
@@ -85,6 +118,61 @@ class DragState:
     item_id: str
     x: float
     y: float
+
+
+@dataclass(slots=True)
+class WorldDrop:
+    stack: ItemStack
+    x: float
+    y: float
+    pickup_enabled: bool = True
+    large_icon: bool = False
+    pickup_origin_x: float | None = None
+    pickup_origin_y: float | None = None
+
+
+@dataclass(slots=True)
+class WorldEntity:
+    definition: WorldEntityDefinition
+    hp: int
+    visible: bool = True
+    completed: bool = False
+    cooldown_remaining: float = 0.0
+    is_on: bool = False
+
+    @classmethod
+    def create(cls, definition: WorldEntityDefinition) -> "WorldEntity":
+        return cls(
+            definition=definition,
+            hp=max(1, int(definition.properties.get("hp", 1))),
+            is_on=bool(definition.properties.get("is_on", False)),
+        )
+
+    @property
+    def sprite_path(self) -> Path:
+        if self.definition.entity_type == "generator_switch":
+            if not self.is_on and self.definition.alternate_sprite_path:
+                return self.definition.alternate_sprite_path
+        elif self.completed and self.definition.alternate_sprite_path:
+            return self.definition.alternate_sprite_path
+        return self.definition.sprite_path
+
+
+def tiled_gid_transform(raw_gid: int) -> tuple[float, str]:
+    """Convert Tiled's three flip bits to Pico2D rotation/flip values."""
+    horizontal = bool(raw_gid & GID_HORIZONTAL_FLIP)
+    vertical = bool(raw_gid & GID_VERTICAL_FLIP)
+    diagonal = bool(raw_gid & GID_DIAGONAL_FLIP)
+    if diagonal:
+        if horizontal and vertical:
+            return math.pi / 2, "h"
+        if horizontal:
+            return math.pi / 2, ""
+        if vertical:
+            return -math.pi / 2, ""
+        return -math.pi / 2, "h"
+    flip = ("h" if horizontal else "") + ("v" if vertical else "")
+    return 0.0, flip
 
 
 def frames_at(row: int, xs: tuple[int, ...] | list[int], flip: str = "") -> tuple[SpriteFrame, ...]:
@@ -201,7 +289,12 @@ class Player:
         self.dead = False
         self._set_state("idle")
 
-    def update(self, dt: float, pressed: set[int]) -> None:
+    def update(
+        self,
+        dt: float,
+        pressed: set[int],
+        movement_resolver: Callable[[float, float, float, float], tuple[float, float]] | None = None,
+    ) -> None:
         if self.state not in ACTION_STATES:
             dx = float(p2.SDLK_d in pressed) - float(p2.SDLK_a in pressed)
             dy = float(p2.SDLK_w in pressed) - float(p2.SDLK_s in pressed)
@@ -218,10 +311,15 @@ class Player:
 
                 running = p2.SDLK_LSHIFT in pressed or p2.SDLK_RSHIFT in pressed
                 speed = self.RUN_SPEED if running else self.WALK_SPEED
-                self.x += dx * speed * dt
-                self.y += dy * speed * dt
-                self.x = max(CHARACTER_WIDTH / 2, min(WINDOW_WIDTH - CHARACTER_WIDTH / 2, self.x))
-                self.y = max(155.0, min(WINDOW_HEIGHT - CHARACTER_HEIGHT - 15.0, self.y))
+                move_x = dx * speed * dt
+                move_y = dy * speed * dt
+                if movement_resolver is None:
+                    self.x += move_x
+                    self.y += move_y
+                    self.x = max(CHARACTER_WIDTH / 2, min(WINDOW_WIDTH - CHARACTER_WIDTH / 2, self.x))
+                    self.y = max(155.0, min(WINDOW_HEIGHT - CHARACTER_HEIGHT - 15.0, self.y))
+                else:
+                    self.x, self.y = movement_resolver(self.x, self.y, move_x, move_y)
                 self._set_state("run" if running else "walk")
             else:
                 self._set_state("idle")
@@ -252,11 +350,18 @@ class Player:
                 break
             self.frame_index = 0
 
-    def draw(self) -> None:
+    def draw(
+        self,
+        x: float | None = None,
+        y: float | None = None,
+        display_scale: float = 1.0,
+    ) -> None:
         frames = self._frames_for_state()
         frame = frames[min(self.frame_index, len(frames) - 1)]
         source_bottom = self.sprite_sheet.h - frame.top - FRAME_HEIGHT
         offset_x, offset_y, rotation = self._state_transform()
+        draw_x = self.x if x is None else x
+        draw_y = self.y if y is None else y
         self.sprite_sheet.clip_composite_draw(
             frame.left,
             source_bottom,
@@ -264,10 +369,10 @@ class Player:
             FRAME_HEIGHT,
             rotation,
             frame.flip,
-            self.x + offset_x,
-            self.y + CHARACTER_HEIGHT / 2 + offset_y,
-            CHARACTER_WIDTH,
-            CHARACTER_HEIGHT,
+            draw_x + offset_x * display_scale,
+            draw_y + (CHARACTER_HEIGHT / 2 + offset_y) * display_scale,
+            CHARACTER_WIDTH * display_scale,
+            CHARACTER_HEIGHT * display_scale,
         )
 
     def _state_transform(self) -> tuple[float, float, float]:
@@ -427,13 +532,23 @@ class GameUI:
         if stack.count > 1:
             self.font_small.draw(rect.right - 24, rect.bottom + 12, str(stack.count), (255, 255, 255))
 
-    def draw_equipped_world_tool(self, player: Player, *, behind: bool) -> None:
+    def draw_equipped_world_tool(
+        self,
+        player: Player,
+        *,
+        behind: bool,
+        x: float | None = None,
+        y: float | None = None,
+        display_scale: float = 1.0,
+    ) -> None:
         """Draw equipped tools at rest and animate vertical tool-use arcs."""
         stack = self.model.tool_slot
         if stack is None:
             return
 
         image = self.item_images[stack.item_id]
+        draw_x = player.x if x is None else x
+        draw_y = player.y if y is None else y
         if player.state in ("idle", "walk", "run"):
             is_behind = player.direction == "up"
             if behind != is_behind:
@@ -449,10 +564,10 @@ class GameUI:
             image.composite_draw(
                 rotations[player.direction],
                 "h" if player.direction == "left" else "",
-                player.x + offset_x,
-                player.y + offset_y,
-                48,
-                48,
+                draw_x + offset_x * display_scale,
+                draw_y + offset_y * display_scale,
+                48 * display_scale,
+                48 * display_scale,
             )
             return
 
@@ -501,10 +616,10 @@ class GameUI:
         image.composite_draw(
             rotation,
             "h" if is_behind else "",
-            player.x + offset_x,
-            player.y + offset_y,
-            size,
-            size,
+            draw_x + offset_x * display_scale,
+            draw_y + offset_y * display_scale,
+            size * display_scale,
+            size * display_scale,
         )
 
 
@@ -519,14 +634,26 @@ class Game:
         self.model = InventoryModel.demo()
         self.player = Player(p2.load_image(str(CHARACTER_SHEET)))
         self.ui = GameUI(self.model)
+        self._map_cache: dict[str, MapData] = {}
+        self._background_cache: dict[str, p2.Image] = {}
+        self._world_image_cache: dict[Path, p2.Image] = {}
+        self.world_drops: dict[str, list[WorldDrop]] = {}
+        self.world_entities: dict[str, list[WorldEntity]] = {}
+        self.map_data: MapData
+        self.map_background: p2.Image | None
+        self.camera_x = 0.0
+        self.camera_y = 0.0
+        self.camera_zoom = CAMERA_ZOOM
+        self.transition_armed = False
+        self.ending_timer = 0.0
         self.running = True
         self.inventory_open = False
         self.pressed: set[int] = set()
         self.drag: DragState | None = None
-        self.toast = "Tab: 인벤토리  |  WASD: 이동  |  E/Space: 장착 도구 사용"
+        self.toast = "E: 채집·이벤트 상호작용  |  Space: 도구 사용  |  Tab: 인벤토리"
         self.toast_error = False
         self.toast_timer = 5.0
-        self.collect_index = 0
+        self._load_map(FIRST_MAP, "player_start")
 
     def show_toast(self, message: str, *, error: bool = False, seconds: float = 2.2) -> None:
         self.toast = message
@@ -567,8 +694,13 @@ class Game:
         elif key == p2.SDLK_TAB:
             self.inventory_open = not self.inventory_open
             self.drag = None
-        elif key in (p2.SDLK_SPACE, p2.SDLK_e):
+        elif key == p2.SDLK_SPACE:
             self._use_tool()
+        elif key == p2.SDLK_e:
+            if not self._interact_world():
+                self._use_tool()
+        elif key == p2.SDLK_f:
+            self._pickup_nearby_item()
         elif key == p2.SDLK_h:
             if self.player.start_action("hurt"):
                 self.show_toast("피격 애니메이션")
@@ -578,8 +710,6 @@ class Game:
         elif key == p2.SDLK_r:
             self.player.revive()
             self.show_toast("다시 일어났습니다")
-        elif key == p2.SDLK_c:
-            self._collect_test_item()
 
     def _use_tool(self) -> None:
         tool = self.model.equipped_tool_definition
@@ -593,21 +723,219 @@ class Game:
             labels = {"attack": "공격", "axe": "도끼질", "mine": "채광", "fish": "낚시"}
             self.show_toast(f"{tool.label}: {labels.get(tool.action, tool.action)}")
 
-    def _collect_test_item(self) -> None:
-        item_id = ("wood", "stone", "fiber")[self.collect_index % 3]
-        self.collect_index += 1
-        remainder = self.model.add_item(item_id, 1)
-        if remainder:
-            self.show_toast("인벤토리가 가득 찼습니다", error=True)
+    def _current_entities(self) -> list[WorldEntity]:
+        return self.world_entities.setdefault(self.map_data.name, [])
+
+    @staticmethod
+    def _entity_label(entity_type: str) -> str:
+        return {
+            "tree": "나무",
+            "rock": "돌",
+            "grass": "풀",
+            "flower": "꽃",
+            "fruit_tree": "과일나무",
+            "generator_switch": "발전기",
+            "bird's nest": "새 둥지",
+            "rescue a bird": "새 구조",
+            "hunter_trap_remove": "사냥꾼 덫",
+            "wolf_pup_rescue": "새끼 늑대 구조",
+            "wolf_den_repair": "늑대 굴 복구",
+            "bear_cub_heal": "새끼 곰 치료",
+            "bear_rescue": "곰 구조",
+            "bear_water_restore": "물길 복원",
+        }.get(entity_type, entity_type)
+
+    def _nearest_interactable(self) -> WorldEntity | None:
+        nearest: WorldEntity | None = None
+        nearest_distance = math.inf
+        maximum_distance = INTERACTION_SCREEN_DISTANCE / self.camera_zoom
+        for entity in self._current_entities():
+            if not entity.visible:
+                continue
+            rect = entity.definition.rect
+            closest_x = min(max(self.player.x, rect.left), rect.right)
+            closest_y = min(max(self.player.y, rect.bottom), rect.top)
+            distance = math.hypot(self.player.x - closest_x, self.player.y - closest_y)
+            if distance <= maximum_distance and distance < nearest_distance:
+                nearest = entity
+                nearest_distance = distance
+        return nearest
+
+    def _interact_world(self) -> bool:
+        entity = self._nearest_interactable()
+        if entity is None:
+            return False
+        if entity.definition.kind == "resource":
+            self._harvest_resource(entity)
         else:
-            self.show_toast(f"{ITEMS[item_id].label} 1개 자동 수집")
+            self._activate_event(entity)
+        return True
+
+    def _equipped_action_is(self, action: str) -> bool:
+        tool = self.model.equipped_tool_definition
+        return tool is not None and tool.action == action
+
+    def _give_loot(self, item_id: str, count: int, x: float, y: float) -> tuple[int, int]:
+        remainder = self.model.add_item(item_id, count)
+        collected = count - remainder
+        if remainder:
+            self.world_drops.setdefault(self.map_data.name, []).append(
+                WorldDrop(ItemStack(item_id, remainder), x, y)
+            )
+        return collected, remainder
+
+    def _harvest_resource(self, entity: WorldEntity) -> None:
+        resource_type = entity.definition.entity_type
+        label = self._entity_label(resource_type)
+        rect = entity.definition.rect
+
+        if resource_type == "fruit_tree":
+            if entity.cooldown_remaining > 0:
+                self.show_toast(
+                    f"사과가 다시 열리려면 {math.ceil(entity.cooldown_remaining)}초 남았습니다",
+                    error=True,
+                )
+                return
+            count = int(entity.definition.properties.get("fruit_count", 3))
+            collected, remainder = self._give_loot(
+                "fruit", count, rect.left + rect.width / 2, rect.bottom
+            )
+            entity.cooldown_remaining = FRUIT_COOLDOWN_SECONDS
+            entity.completed = True
+            suffix = f" · {remainder}개는 바닥에 떨어졌습니다" if remainder else ""
+            self.show_toast(f"사과 {collected}개를 수확했습니다{suffix}")
+            return
+
+        required_action = {"tree": "axe", "rock": "mine"}.get(resource_type)
+        if required_action and not self._equipped_action_is(required_action):
+            required_label = "도끼" if required_action == "axe" else "곡괭이"
+            self.show_toast(
+                f"{label} 채집은 tool 슬롯에 {required_label}를 장착해야 합니다",
+                error=True,
+            )
+            return
+        if required_action and not self.player.start_action(required_action):
+            return
+
+        entity.hp -= 1
+        if entity.hp > 0:
+            self.show_toast(f"{label}: {entity.hp}번 더 채집해야 합니다")
+            return
+
+        entity.visible = False
+        item_id = str(entity.definition.properties.get("drop_item", "fiber"))
+        count = int(entity.definition.properties.get("drop_count", 1))
+        collected, remainder = self._give_loot(
+            item_id, count, rect.left + rect.width / 2, rect.bottom
+        )
+        suffix = f" · {remainder}개는 바닥에 떨어졌습니다" if remainder else ""
+        self.show_toast(f"{label}을(를) 수확해 {ITEMS[item_id].label} {collected}개 획득{suffix}")
+
+    def _activate_event(self, entity: WorldEntity) -> None:
+        event_type = entity.definition.entity_type
+        label = self._entity_label(event_type)
+        if event_type != "generator_switch" and entity.completed:
+            self.show_toast(f"{label} 이벤트는 이미 완료했습니다")
+            return
+
+        required_tool = str(entity.definition.properties.get("required_tool", ""))
+        if required_tool:
+            required_action = "mine" if required_tool == "pickaxe" else required_tool
+            if not self._equipped_action_is(required_action):
+                self.show_toast(f"{label}: 곡괭이를 장착해야 합니다", error=True)
+                return
+            if not self.player.start_action(required_action):
+                return
+
+        reward = int(entity.definition.properties.get("reward", 0))
+        if event_type == "generator_switch":
+            entity.is_on = not entity.is_on
+            state_label = "켜짐" if entity.is_on else "꺼짐"
+            self.show_toast(f"발전기 {state_label} · 보상 {reward}")
+            return
+
+        entity.completed = True
+        if entity.definition.alternate_sprite_path is None:
+            entity.visible = False
+        self.show_toast(f"{label} 완료 · 보상 {reward}")
+
+    def _update_entity_timers(self, dt: float) -> None:
+        for entities in self.world_entities.values():
+            for entity in entities:
+                if entity.cooldown_remaining <= 0:
+                    continue
+                entity.cooldown_remaining = max(0.0, entity.cooldown_remaining - dt)
+                if entity.cooldown_remaining == 0:
+                    entity.completed = False
+
+    def _dynamic_collisions(self) -> tuple[WorldRect, ...]:
+        return tuple(
+            entity.definition.collision_rect
+            for entity in self._current_entities()
+            if entity.visible and entity.definition.collision_rect is not None
+        )
+
+    def _resolve_player_movement(
+        self, x: float, y: float, dx: float, dy: float
+    ) -> tuple[float, float]:
+        return self.map_data.resolve_movement(
+            x,
+            y,
+            dx / self.camera_zoom,
+            dy / self.camera_zoom,
+            self._dynamic_collisions(),
+        )
+
+    def _random_drop_position(self) -> tuple[float, float]:
+        minimum = THROWN_DROP_MIN_SCREEN_DISTANCE / self.camera_zoom
+        maximum = THROWN_DROP_MAX_SCREEN_DISTANCE / self.camera_zoom
+        extra_collisions = self._dynamic_collisions()
+        for _ in range(32):
+            angle = random.uniform(0.0, math.tau)
+            distance = random.uniform(minimum, maximum)
+            world_x = min(
+                max(self.player.x + math.cos(angle) * distance, 12.0),
+                self.map_data.width - 12.0,
+            )
+            world_y = min(
+                max(self.player.y + math.sin(angle) * distance, 8.0),
+                self.map_data.height - 8.0,
+            )
+            actual_distance = math.hypot(
+                world_x - self.player.x, world_y - self.player.y
+            )
+            if actual_distance < minimum * 0.75:
+                continue
+            if not self.map_data._blocked(world_x, world_y, extra_collisions):
+                return world_x, world_y
+        return (
+            min(max(self.player.x + minimum, 12.0), self.map_data.width - 12.0),
+            min(max(self.player.y, 8.0), self.map_data.height - 8.0),
+        )
 
     def _finish_drag(self, x: float, y: float) -> None:
         if not self.drag:
             return
         target = self.ui.slot_at(x, y, self.inventory_open)
         if target is None:
-            self.show_toast("이동이 취소되었습니다", error=True, seconds=1.2)
+            stack = self.model.take(self.drag.source)
+            if stack is not None:
+                world_x, world_y = self._random_drop_position()
+                self.world_drops.setdefault(self.map_data.name, []).append(
+                    WorldDrop(
+                        stack,
+                        world_x,
+                        world_y,
+                        pickup_enabled=False,
+                        large_icon=True,
+                        pickup_origin_x=self.player.x,
+                        pickup_origin_y=self.player.y,
+                    )
+                )
+                self.show_toast(
+                    f"{stack.definition.label}을(를) 캐릭터 주변에 던졌습니다",
+                    seconds=1.5,
+                )
         elif self.model.try_move(self.drag.source, target):
             self.show_toast("슬롯이 동기화되었습니다", seconds=1.2)
         else:
@@ -615,20 +943,312 @@ class Game:
             self.show_toast(f"{target_name} 슬롯에 넣을 수 없는 아이템입니다", error=True)
         self.drag = None
 
+    def _pickup_nearby_item(self) -> None:
+        drops = self.world_drops.setdefault(self.map_data.name, [])
+        if not drops:
+            self.show_toast("근처에 주울 아이템이 없습니다", error=True, seconds=1.2)
+            return
+        nearby = min(
+            drops,
+            key=lambda drop: (drop.x - self.player.x) ** 2 + (drop.y - self.player.y) ** 2,
+        )
+        distance_squared = (nearby.x - self.player.x) ** 2 + (nearby.y - self.player.y) ** 2
+        pickup_radius = MANUAL_PICKUP_SCREEN_DISTANCE / self.camera_zoom
+        if distance_squared > pickup_radius ** 2:
+            self.show_toast("아이템에 더 가까이 가세요", error=True, seconds=1.2)
+            return
+        original_count = nearby.stack.count
+        remainder = self.model.add_item(nearby.stack.item_id, original_count)
+        collected = original_count - remainder
+        if collected == 0:
+            self.show_toast("인벤토리가 가득 찼습니다", error=True)
+            return
+        if remainder:
+            nearby.stack.count = remainder
+        else:
+            drops.remove(nearby)
+        self.show_toast(f"{nearby.stack.definition.label} {collected}개를 주웠습니다")
+
+    def _auto_pickup_world_items(self) -> None:
+        drops = self.world_drops.setdefault(self.map_data.name, [])
+        pickup_radius = AUTO_PICKUP_SCREEN_DISTANCE / self.camera_zoom
+        legacy_rearm_radius = pickup_radius * 1.05
+        collected_labels: list[str] = []
+        for drop in tuple(drops):
+            distance = math.hypot(drop.x - self.player.x, drop.y - self.player.y)
+            if not drop.pickup_enabled:
+                if (
+                    drop.pickup_origin_x is not None
+                    and drop.pickup_origin_y is not None
+                ):
+                    movement = math.hypot(
+                        self.player.x - drop.pickup_origin_x,
+                        self.player.y - drop.pickup_origin_y,
+                    )
+                    if movement * self.camera_zoom >= THROWN_DROP_REARM_MOVEMENT:
+                        drop.pickup_enabled = True
+                elif distance > legacy_rearm_radius:
+                    drop.pickup_enabled = True
+                if not drop.pickup_enabled:
+                    continue
+            if distance > pickup_radius:
+                continue
+            original_count = drop.stack.count
+            remainder = self.model.add_item(drop.stack.item_id, original_count)
+            collected = original_count - remainder
+            if collected == 0:
+                continue
+            collected_labels.append(f"{drop.stack.definition.label} {collected}개")
+            if remainder:
+                drop.stack.count = remainder
+            else:
+                drops.remove(drop)
+        if collected_labels:
+            self.show_toast(f"자동 획득: {', '.join(collected_labels)}", seconds=1.5)
+
+    def _load_map(self, map_name: str, spawn_name: str) -> None:
+        map_data = self._map_cache.get(map_name)
+        reloaded = (
+            map_data is None
+            or not map_data.source_path.exists()
+            or map_data.source_path.stat().st_mtime_ns != map_data.source_mtime_ns
+        )
+        if reloaded:
+            map_data = load_map_data(map_name)
+            self._map_cache[map_name] = map_data
+        background = None
+        if not map_data.tiles:
+            background = self._background_cache.get(map_name)
+            if background is None:
+                background = p2.load_image(str(map_data.background_path))
+                self._background_cache[map_name] = background
+        self.map_data = map_data
+        self.map_background = background
+        self.player.x, self.player.y = map_data.spawn(spawn_name)
+        self.player._set_state("idle")
+        self.world_drops.setdefault(map_name, [])
+        if reloaded or map_name not in self.world_entities:
+            self.world_entities[map_name] = [
+                WorldEntity.create(definition) for definition in map_data.entities
+            ]
+        self.camera_zoom = CAMERA_ZOOM
+        self.transition_armed = False
+        self._update_camera()
+
+    def _update_camera(self) -> None:
+        viewport_width = WINDOW_WIDTH / self.camera_zoom
+        viewport_height = WINDOW_HEIGHT / self.camera_zoom
+        if self.map_data.width <= viewport_width:
+            self.camera_x = self.map_data.width / 2
+        else:
+            self.camera_x = min(
+                max(self.player.x, viewport_width / 2),
+                self.map_data.width - viewport_width / 2,
+            )
+        if self.map_data.height <= viewport_height:
+            self.camera_y = self.map_data.height / 2
+        else:
+            self.camera_y = min(
+                max(self.player.y, viewport_height / 2),
+                self.map_data.height - viewport_height / 2,
+            )
+
+    def world_to_screen(self, x: float, y: float) -> tuple[float, float]:
+        return (
+            (x - self.camera_x) * self.camera_zoom + WINDOW_WIDTH / 2,
+            (y - self.camera_y) * self.camera_zoom + WINDOW_HEIGHT / 2,
+        )
+
+    def screen_to_world(self, x: float, y: float) -> tuple[float, float]:
+        return (
+            (x - WINDOW_WIDTH / 2) / self.camera_zoom + self.camera_x,
+            (y - WINDOW_HEIGHT / 2) / self.camera_zoom + self.camera_y,
+        )
+
+    def _update_transition(self) -> None:
+        transition = self.map_data.transition_at(self.player.x, self.player.y)
+        if transition is None:
+            self.transition_armed = True
+            return
+        if not self.transition_armed:
+            return
+        if transition.ends_game:
+            self.ending_timer = 1.25
+            self.pressed.clear()
+            self.player._set_state("idle")
+            self.show_toast("엔딩 통로에 도착했습니다. 게임을 종료합니다.", seconds=1.25)
+            self.transition_armed = False
+            return
+        if transition.target_map is None:
+            return
+        self._load_map(transition.target_map, transition.target_spawn)
+        self.show_toast(f"{self.map_data.label}(으)로 이동했습니다")
+
     def update(self, dt: float) -> None:
-        self.player.update(dt, self.pressed)
+        self._update_entity_timers(dt)
+        if self.ending_timer > 0:
+            self.ending_timer -= dt
+            if self.ending_timer <= 0:
+                self.running = False
+        else:
+            self.player.update(dt, self.pressed, self._resolve_player_movement)
+            self._update_camera()
+            self._auto_pickup_world_items()
+            self._update_transition()
         if self.toast_timer > 0:
             self.toast_timer -= dt
             if self.toast_timer <= 0:
                 self.toast = ""
 
+    def _world_image(self, path: Path) -> p2.Image:
+        image = self._world_image_cache.get(path)
+        if image is None:
+            image = p2.load_image(str(path))
+            self._world_image_cache[path] = image
+        return image
+
+    def _draw_tiled_sprite(
+        self,
+        sprite: TileSpriteDefinition,
+        raw_gid: int,
+        rect: WorldRect,
+        rotation_degrees: float = 0.0,
+    ) -> None:
+        center_x, center_y = self.world_to_screen(
+            rect.left + rect.width / 2, rect.bottom + rect.height / 2
+        )
+        draw_width = rect.width * self.camera_zoom
+        draw_height = rect.height * self.camera_zoom
+        if (
+            center_x + draw_width / 2 < 0
+            or center_x - draw_width / 2 > WINDOW_WIDTH
+            or center_y + draw_height / 2 < 0
+            or center_y - draw_height / 2 > WINDOW_HEIGHT
+        ):
+            return
+        rotation, flip = tiled_gid_transform(raw_gid)
+        rotation += math.radians(rotation_degrees)
+        self._world_image(sprite.image_path).clip_composite_draw(
+            sprite.clip_left,
+            sprite.clip_bottom,
+            sprite.clip_width,
+            sprite.clip_height,
+            rotation,
+            flip,
+            center_x,
+            center_y,
+            draw_width,
+            draw_height,
+        )
+
     def draw(self, *, present: bool = True) -> None:
         p2.clear_canvas()
-        p2.draw_rectangle(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1, 25, 37, 43, 255, True)
-        p2.draw_rectangle(0, 145, WINDOW_WIDTH - 1, 148, 54, 70, 73, 255, True)
-        self.ui.draw_equipped_world_tool(self.player, behind=True)
-        self.player.draw()
-        self.ui.draw_equipped_world_tool(self.player, behind=False)
+        p2.draw_rectangle(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1, 12, 18, 21, 255, True)
+        if self.map_background is not None:
+            background_x, background_y = self.world_to_screen(
+                self.map_data.width / 2, self.map_data.height / 2
+            )
+            self.map_background.draw(
+                background_x,
+                background_y,
+                self.map_data.width * self.camera_zoom,
+                self.map_data.height * self.camera_zoom,
+            )
+        else:
+            view_left, view_bottom = self.screen_to_world(0, 0)
+            view_right, view_top = self.screen_to_world(WINDOW_WIDTH, WINDOW_HEIGHT)
+            for tile in self.map_data.tiles_in_view(
+                view_left, view_bottom, view_right, view_top
+            ):
+                self._draw_tiled_sprite(tile.sprite, tile.raw_gid, tile.rect)
+            for obj in self.map_data.object_tiles:
+                self._draw_tiled_sprite(
+                    obj.sprite, obj.raw_gid, obj.rect, obj.rotation
+                )
+        for entity in self._current_entities():
+            if not entity.visible:
+                continue
+            rect = entity.definition.rect
+            entity_x, entity_y = self.world_to_screen(
+                rect.left + rect.width / 2, rect.bottom + rect.height / 2
+            )
+            draw_width = rect.width * self.camera_zoom
+            draw_height = rect.height * self.camera_zoom
+            if not (
+                entity_x + draw_width / 2 < -40
+                or entity_x - draw_width / 2 > WINDOW_WIDTH + 40
+                or entity_y + draw_height / 2 < -40
+                or entity_y - draw_height / 2 > WINDOW_HEIGHT + 40
+            ):
+                self._world_image(entity.sprite_path).draw(
+                    entity_x, entity_y, draw_width, draw_height
+                )
+                if (
+                    entity.definition.entity_type == "fruit_tree"
+                    and entity.cooldown_remaining > 0
+                ):
+                    marker_y = entity_y + draw_height * 0.1
+                    p2.draw_rectangle(
+                        entity_x - 34,
+                        marker_y - 13,
+                        entity_x + 34,
+                        marker_y + 13,
+                        20,
+                        55,
+                        25,
+                        225,
+                        True,
+                    )
+                    self.ui.font_small.draw(
+                        entity_x - 25,
+                        marker_y - 6,
+                        f"OK {math.ceil(entity.cooldown_remaining)}s",
+                        (188, 255, 166),
+                    )
+        for drop in self.world_drops[self.map_data.name]:
+            drop_x, drop_y = self.world_to_screen(drop.x, drop.y)
+            if -50 <= drop_x <= WINDOW_WIDTH + 50 and -50 <= drop_y <= WINDOW_HEIGHT + 50:
+                drop_size = (
+                    THROWN_DROP_SCREEN_SIZE
+                    if drop.large_icon
+                    else 54 * self.camera_zoom
+                )
+                self.ui.item_images[drop.stack.item_id].draw(
+                    drop_x, drop_y + drop_size * 0.2, drop_size, drop_size
+                )
+                if drop.stack.count > 1:
+                    self.ui.font_small.draw(
+                        drop_x + drop_size * 0.25,
+                        drop_y,
+                        str(drop.stack.count),
+                        (255, 255, 255),
+                    )
+        player_x, player_y = self.world_to_screen(self.player.x, self.player.y)
+        self.ui.draw_equipped_world_tool(
+            self.player,
+            behind=True,
+            x=player_x,
+            y=player_y,
+            display_scale=self.camera_zoom,
+        )
+        self.player.draw(player_x, player_y, display_scale=self.camera_zoom)
+        self.ui.draw_equipped_world_tool(
+            self.player,
+            behind=False,
+            x=player_x,
+            y=player_y,
+            display_scale=self.camera_zoom,
+        )
+        nearby = self._nearest_interactable()
+        if nearby is not None:
+            rect = nearby.definition.rect
+            prompt_x, prompt_y = self.world_to_screen(
+                rect.left + rect.width / 2, rect.top
+            )
+            label = self._entity_label(nearby.definition.entity_type)
+            self.ui.font_small.draw(prompt_x - 42, prompt_y + 10, f"E · {label}", (255, 245, 176))
+        p2.draw_rectangle(12, 678, 216, 710, 20, 25, 23, 205, True)
+        self.ui.font.draw(24, 690, self.map_data.label, (255, 236, 183))
         self.ui.draw(self.inventory_open, self.drag, self.toast, self.toast_error)
         if present:
             p2.update_canvas()

@@ -5795,6 +5795,19 @@
                  "width":0,
                  "x":2081.66666666667,
                  "y":3800.08333333333
+                },
+                {
+                 "height":0,
+                 "id":403,
+                 "name":"from_bear_forest",
+                 "opacity":1,
+                 "point":true,
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":472,
+                 "y":160
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -5829,6 +5842,29 @@
                  "width":173.333,
                  "x":385.3335,
                  "y":2.00016666666667
+                },
+                {
+                 "height":62,
+                 "id":404,
+                 "name":"exit_to_crow",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"target_map",
+                         "type":"string",
+                         "value":"crow_map.json"
+                        },
+                        {
+                         "name":"target_spawn",
+                         "type":"string",
+                         "value":"from_wolf_forest"
+                        }],
+                 "rotation":0,
+                 "type":"map_exit",
+                 "visible":true,
+                 "width":220,
+                 "x":1980,
+                 "y":3778
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -5837,7 +5873,7 @@
          "y":0
         }],
  "nextlayerid":20,
- "nextobjectid":403,
+ "nextobjectid":405,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",

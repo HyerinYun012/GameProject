@@ -1091,43 +1091,43 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/base_terrain.tsx"
+         "source":"assets\/ruined_town\/tilesets\/base_terrain.tsx"
         }, 
         {
          "firstgid":33,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/trans_sidewalk_asphalt.tsx"
+         "source":"assets\/ruined_town\/tilesets\/trans_sidewalk_asphalt.tsx"
         }, 
         {
          "firstgid":49,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/trans_dirt_asphalt.tsx"
+         "source":"assets\/ruined_town\/tilesets\/trans_dirt_asphalt.tsx"
         }, 
         {
          "firstgid":65,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/trans_dirt_sidewalk.tsx"
+         "source":"assets\/ruined_town\/tilesets\/trans_dirt_sidewalk.tsx"
         }, 
         {
          "firstgid":81,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/trans_rubble_asphalt.tsx"
+         "source":"assets\/ruined_town\/tilesets\/trans_rubble_asphalt.tsx"
         }, 
         {
          "firstgid":97,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/trans_wood_sidewalk.tsx"
+         "source":"assets\/ruined_town\/tilesets\/trans_wood_sidewalk.tsx"
         }, 
         {
          "firstgid":113,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/trans_tile_sidewalk.tsx"
+         "source":"assets\/ruined_town\/tilesets\/trans_tile_sidewalk.tsx"
         }, 
         {
          "firstgid":129,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/walls_brick.tsx"
+         "source":"assets\/ruined_town\/tilesets\/walls_brick.tsx"
         }, 
         {
          "firstgid":149,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/walls_concrete.tsx"
+         "source":"assets\/ruined_town\/tilesets\/walls_concrete.tsx"
         }, 
         {
          "firstgid":169,
-         "source":"..\/..\/..\/..\/Downloads\/ruined_town_v1\/ruined_town_v1\/tilesets\/props.tsx"
+         "source":"assets\/ruined_town\/tilesets\/props.tsx"
         }],
  "tilewidth":16,
  "type":"map",

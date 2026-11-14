@@ -36,6 +36,9 @@ def main() -> None:
     generated = Path(__file__).resolve().parents[1] / "generated"
     inventory_preview = generated / "game_preview_inventory.png"
     character_preview = generated / "game_preview_character.png"
+    world_resources_preview = generated / "game_preview_world_resources.png"
+    world_event_preview = generated / "game_preview_world_event.png"
+    fruit_cooldown_preview = generated / "game_preview_fruit_cooldown.png"
     action_previews = {
         "axe": generated / "game_preview_axe.png",
         "mine": generated / "game_preview_mine.png",
@@ -94,10 +97,59 @@ def main() -> None:
             game.draw(present=False)
             capture(destination)
             p2.update_canvas()
+
+        game._load_map("crow_map.json", "player_start")
+        tree = next(
+            entity
+            for entity in game.world_entities["crow_map.json"]
+            if entity.definition.entity_type == "tree"
+        )
+        tree_rect = tree.definition.rect
+        game.player.x = tree_rect.left + tree_rect.width / 2
+        game.player.y = tree_rect.bottom - 70
+        game.player.state = "idle"
+        game.player.direction = "up"
+        game._update_camera()
+        game.toast = "JSON Resources / Events · E 상호작용"
+        game.draw(present=False)
+        capture(world_resources_preview)
+        p2.update_canvas()
+
+        generator = next(
+            entity
+            for entity in game.world_entities["crow_map.json"]
+            if entity.definition.entity_type == "generator_switch"
+        )
+        generator_rect = generator.definition.rect
+        game.player.x = generator_rect.left + generator_rect.width / 2
+        game.player.y = generator_rect.bottom - 70
+        game._activate_event(generator)
+        game._update_camera()
+        game.draw(present=False)
+        capture(world_event_preview)
+        p2.update_canvas()
+
+        game._load_map("bear_map.json", "player_start")
+        fruit_tree = next(
+            entity
+            for entity in game.world_entities["bear_map.json"]
+            if entity.definition.entity_type == "fruit_tree"
+        )
+        fruit_rect = fruit_tree.definition.rect
+        game.player.x = fruit_rect.left + fruit_rect.width / 2
+        game.player.y = fruit_rect.bottom - 70
+        game._harvest_resource(fruit_tree)
+        game._update_camera()
+        game.draw(present=False)
+        capture(fruit_cooldown_preview)
+        p2.update_canvas()
     finally:
         p2.close_canvas()
     print(inventory_preview)
     print(character_preview)
+    print(world_resources_preview)
+    print(world_event_preview)
+    print(fruit_cooldown_preview)
     for destination in action_previews.values():
         print(destination)
     for destination in direction_previews.values():

@@ -43,6 +43,9 @@ ITEMS: dict[str, ItemDefinition] = {
     "wood": ItemDefinition("wood", "나무", "wood.png", "material", max_stack=99),
     "stone": ItemDefinition("stone", "돌", "stone.png", "material", max_stack=99),
     "fiber": ItemDefinition("fiber", "섬유", "fiber.png", "material", max_stack=99),
+    "fruit": ItemDefinition(
+        "fruit", "사과", "apple.png", "material", max_stack=99
+    ),
     "travel_bedding": ItemDefinition("travel_bedding", "여행 침구", "travel bedding set.png", "utility"),
 }
 
@@ -90,7 +93,7 @@ class SlotRef:
         return cls("armor")
 
 
-DEMO_LOADOUT: tuple[tuple[str, int], ...] = (
+STARTING_TOOL_LOADOUT: tuple[tuple[str, int], ...] = (
     ("wooden_axe", 1),
     ("wooden_pickaxe", 1),
     ("fishing_rod", 1),
@@ -101,12 +104,10 @@ DEMO_LOADOUT: tuple[tuple[str, int], ...] = (
     ("stone_sword", 1),
     ("wooden_spear", 1),
     ("stone_spear", 1),
-    ("light_armor", 1),
-    ("wood", 12),
-    ("stone", 10),
-    ("fiber", 8),
-    ("travel_bedding", 1),
 )
+
+# Backwards-compatible public name used by older prototype code and tests.
+DEMO_LOADOUT = STARTING_TOOL_LOADOUT
 
 
 class InventoryModel:
@@ -139,9 +140,11 @@ class InventoryModel:
         return self.tool_slot.definition if self.tool_slot else None
 
     def seed_demo_inventory(self) -> None:
-        if len(DEMO_LOADOUT) != INVENTORY_SIZE:
-            raise RuntimeError("Demo loadout must fill exactly 15 slots")
-        self.slots = [ItemStack(item_id, count) for item_id, count in DEMO_LOADOUT]
+        """Start with tools only and leave the remaining inventory slots empty."""
+        if len(STARTING_TOOL_LOADOUT) > INVENTORY_SIZE:
+            raise RuntimeError("Starting tool loadout does not fit in the inventory")
+        self.slots = [ItemStack(item_id, count) for item_id, count in STARTING_TOOL_LOADOUT]
+        self.slots.extend([None] * (INVENTORY_SIZE - len(self.slots)))
         self.tool_slot = None
         self.armor_slot = None
 
@@ -217,6 +220,43 @@ class InventoryModel:
                 return 0
         return remaining
 
+    def take(self, source: SlotRef, count: int | None = None) -> ItemStack | None:
+        """Remove and return a stack (or part of it) from a slot.
+
+        World dropping uses this operation so an item is only removed from the
+        inventory after a visible world item has been created.
+        """
+        source = self.canonical_ref(source)
+        stack = self.get(source)
+        if stack is None:
+            return None
+        if count is not None and count <= 0:
+            raise ValueError("Take count must be positive")
+        if count is None or count >= stack.count:
+            self._set(source, None)
+            return stack
+        stack.count -= count
+        return ItemStack(stack.item_id, count)
+
+    def remove_item(self, item_id: str, count: int = 1) -> int:
+        """Remove up to ``count`` items and return the amount actually removed."""
+        if item_id not in ITEMS:
+            raise KeyError(f"Unknown item: {item_id}")
+        if count < 0:
+            raise ValueError("Cannot remove a negative item count")
+        remaining = count
+        for index, stack in enumerate(self.slots):
+            if remaining == 0:
+                break
+            if stack is None or stack.item_id != item_id:
+                continue
+            removed = min(stack.count, remaining)
+            stack.count -= removed
+            remaining -= removed
+            if stack.count == 0:
+                self.slots[index] = None
+        return count - remaining
+
     def try_move(self, source: SlotRef, target: SlotRef) -> bool:
         """Move, merge, or swap two slots without ever losing an item."""
         source = self.canonical_ref(source)
@@ -251,5 +291,6 @@ class InventoryModel:
 
 __all__ = [
     "ARMOR_ITEM_IDS", "DEMO_LOADOUT", "HOTBAR_SIZE", "INVENTORY_SIZE", "ITEMS",
-    "TOOL_ITEM_IDS", "InventoryModel", "ItemDefinition", "ItemStack", "SlotRef",
+    "STARTING_TOOL_LOADOUT", "TOOL_ITEM_IDS", "InventoryModel", "ItemDefinition",
+    "ItemStack", "SlotRef",
 ]

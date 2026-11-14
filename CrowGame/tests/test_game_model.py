@@ -22,13 +22,21 @@ from game_model import (  # noqa: E402
 
 
 class InventoryModelTests(unittest.TestCase):
+    def test_harvested_fruit_uses_the_apple_asset(self) -> None:
+        self.assertEqual("사과", ITEMS["fruit"].label)
+        self.assertEqual("apple.png", ITEMS["fruit"].icon_filename)
+        self.assertTrue((PROJECT_DIR / "assets" / "apple.png").exists())
+
     def test_definition_and_demo_sizes(self) -> None:
-        self.assertEqual(15, len(ITEMS))
+        self.assertEqual(16, len(ITEMS))
         self.assertEqual(10, len(TOOL_ITEM_IDS))
         self.assertEqual({"light_armor"}, ARMOR_ITEM_IDS)
         model = InventoryModel.demo()
         self.assertEqual(INVENTORY_SIZE, len(model.slots))
-        self.assertEqual(INVENTORY_SIZE, sum(stack is not None for stack in model.slots))
+        occupied = [stack for stack in model.slots if stack is not None]
+        self.assertEqual(len(TOOL_ITEM_IDS), len(occupied))
+        self.assertTrue(all(stack.definition.category == "tool" for stack in occupied))
+        self.assertEqual(INVENTORY_SIZE - len(TOOL_ITEM_IDS), model.slots.count(None))
 
     def test_hotbar_is_the_first_five_inventory_slots(self) -> None:
         model = InventoryModel.demo()
@@ -50,9 +58,25 @@ class InventoryModelTests(unittest.TestCase):
         self.assertEqual(6, model.slots[1].count)
 
     def test_add_item_returns_remainder_when_full(self) -> None:
-        model = InventoryModel.demo()
-        model.slots[11].count = ITEMS["wood"].max_stack
+        model = InventoryModel()
+        model.slots = [ItemStack("wood", ITEMS["wood"].max_stack) for _ in model.slots]
         self.assertEqual(7, model.add_item("wood", 7))
+
+    def test_take_removes_a_stack_for_world_drop(self) -> None:
+        model = InventoryModel()
+        model.slots[0] = ItemStack("stone", 7)
+        dropped = model.take(SlotRef.hotbar(0))
+        self.assertEqual(ItemStack("stone", 7), dropped)
+        self.assertIsNone(model.slots[0])
+
+    def test_take_partial_stack_and_remove_item(self) -> None:
+        model = InventoryModel()
+        model.slots[0] = ItemStack("fiber", 8)
+        taken = model.take(SlotRef.inventory(0), 3)
+        self.assertEqual(ItemStack("fiber", 3), taken)
+        self.assertEqual(5, model.slots[0].count)
+        self.assertEqual(4, model.remove_item("fiber", 4))
+        self.assertEqual(1, model.slots[0].count)
 
     def test_tool_slot_rejects_non_tools_without_mutation(self) -> None:
         model = InventoryModel()
