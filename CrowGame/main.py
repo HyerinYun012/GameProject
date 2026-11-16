@@ -122,12 +122,30 @@ STATE_FPS = {
 }
 ACTION_STATES = frozenset({"hurt", "death", "attack", "axe", "mine", "fish"})
 
-ANIMAL_ANIMATIONS: dict[str, tuple[int, float, bool]] = {
-    "idle": (4, 4.0, True),
-    "walk": (6, 8.0, True),
-    "attack": (6, 10.0, False),
-    "hurt": (3, 12.0, False),
-    "death": (6, 8.0, False),
+ANIMAL_ANIMATIONS: dict[str, dict[str, tuple[int, float, bool]]] = {
+    "crow": {
+        "idle": (4, 8.0, True),
+        "walk": (6, 12.0, True),
+        # The crow pack has no separate attack sheet; one brisk non-looping
+        # flight cycle is used as a diving strike.
+        "attack": (6, 12.0, False),
+        "hurt": (3, 12.0, False),
+        "death": (6, 10.0, False),
+    },
+    "wolf": {
+        "idle": (4, 4.0, True),
+        "walk": (6, 10.0, True),
+        "attack": (6, 12.0, False),
+        "hurt": (3, 12.0, False),
+        "death": (6, 8.0, False),
+    },
+    "bear": {
+        "idle": (4, 4.0, True),
+        "walk": (6, 6.0, True),
+        "attack": (6, 10.0, False),
+        "hurt": (3, 12.0, False),
+        "death": (6, 8.0, False),
+    },
 }
 ANIMAL_STATS = {
     "crow": {
@@ -356,9 +374,14 @@ class EnemyAI:
         speed = float(ANIMAL_STATS[self.animal]["speed"])
         move_x = dx / distance * speed * dt
         move_y = dy / distance * speed * dt
-        next_x, next_y = map_data.resolve_movement(
-            self.x, self.y, move_x, move_y
-        )
+        if self.animal == "crow":
+            # Crows fly over ground props and collision tiles; resolving them
+            # like walking animals makes the patrol visibly snag on scenery.
+            next_x, next_y = self.x + move_x, self.y + move_y
+        else:
+            next_x, next_y = map_data.resolve_movement(
+                self.x, self.y, move_x, move_y
+            )
         moved_x = next_x - self.x
         moved_y = next_y - self.y
         self.x, self.y = next_x, next_y
@@ -427,7 +450,7 @@ class EnemyAI:
         return 0.0
 
     def _advance_animation(self, dt: float) -> None:
-        frame_count, fps, loops = ANIMAL_ANIMATIONS[self.state]
+        frame_count, fps, loops = ANIMAL_ANIMATIONS[self.animal][self.state]
         self.frame_clock += dt
         frame_duration = 1.0 / fps
         while self.frame_clock >= frame_duration:
@@ -514,19 +537,43 @@ MOVE_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "up": frames_at(192, VERTICAL_MOVE_X),
 }
 
-# Every tool action uses the same clean front/back body poses.  Horizontal tool
-# source animations are intentionally not used; GameUI supplies the directional
-# item arc while the character body stays visually consistent.
+# Front/back actions share clean poses. Horizontal actions use the atlas's real
+# side-facing bodies so the character looks toward the swing direction.
 VERTICAL_TOOL_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "down": frames_at(192, (176, 208, 240, 272)),
     "up": frames_at(144, (176, 208, 240, 272)),
 }
-UNIFIED_ACTION_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
-    "down": VERTICAL_TOOL_FRAMES["down"],
-    "left": VERTICAL_TOOL_FRAMES["down"],
-    "right": VERTICAL_TOOL_FRAMES["down"],
-    "up": VERTICAL_TOOL_FRAMES["up"],
+SIDE_ACTION_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
+    "attack": {
+        "right": frames_at(288, (0, 32, 32, 0)),
+        "left": frames_at(288, (64, 96, 96, 64)),
+    },
+    "axe": {
+        "right": frames_at(288, (176, 208, 240, 272)),
+        "left": frames_at(288, (176, 208, 240, 272), "h"),
+    },
+    "mine": {
+        "right": frames_at(240, (176, 208, 240, 272)),
+        "left": frames_at(240, (176, 208, 240, 272), "h"),
+    },
+    "fish": {
+        "right": frames_at(432, (176, 208, 208, 176)),
+        "left": frames_at(432, (240, 272, 272, 240)),
+    },
 }
+
+ACTION_BODY_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
+    state: {
+        "down": VERTICAL_TOOL_FRAMES["down"],
+        "up": VERTICAL_TOOL_FRAMES["up"],
+        **side_frames,
+    }
+    for state, side_frames in SIDE_ACTION_FRAMES.items()
+}
+
+# Kept as a public alias for older preview/test code; only front/back bodies are
+# intentionally unified now.
+UNIFIED_ACTION_FRAMES = VERTICAL_TOOL_FRAMES
 
 HURT_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "down": frames_at(384, (0, 32, 64)),
@@ -536,7 +583,7 @@ HURT_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
 }
 
 # Backwards-compatible public name used by tests and preview tooling.
-ATTACK_FRAMES = UNIFIED_ACTION_FRAMES
+ATTACK_FRAMES = ACTION_BODY_FRAMES["attack"]
 
 
 class Player:
@@ -566,7 +613,7 @@ class Player:
         if self.state == "hurt":
             return HURT_FRAMES[self.direction]
         if self.state in ("attack", "axe", "mine", "fish"):
-            return UNIFIED_ACTION_FRAMES[self.direction]
+            return ACTION_BODY_FRAMES[self.state][self.direction]
         if self.state == "death":
             base = {
                 "left": IDLE_FRAMES["left"][0],
@@ -612,6 +659,13 @@ class Player:
         else:
             self.start_action("hurt")
         return damage_taken
+
+    def restore_hp(self, amount: float) -> float:
+        if amount <= 0 or self.dead:
+            return 0.0
+        previous_hp = self.hp
+        self.hp = min(self.max_hp, self.hp + amount)
+        return self.hp - previous_hp
 
     def update(
         self,
@@ -1124,7 +1178,7 @@ class GameUI:
         y: float | None = None,
         display_scale: float = 1.0,
     ) -> None:
-        """Draw held items and one unified front/back action arc."""
+        """Draw held items and front/back action arcs."""
         stack = self.model.tool_slot
         if stack is None:
             return
@@ -1159,6 +1213,11 @@ class GameUI:
             player.state not in ("attack", "axe", "mine", "fish")
             or definition.action != player.state
         ):
+            return
+
+        # Side-facing action frames already contain their matching swung tool.
+        # Drawing the inventory icon again would create a doubled weapon.
+        if player.direction in ("left", "right"):
             return
 
         is_behind = player.direction == "up"
@@ -1386,6 +1445,9 @@ class Game:
         if tool.item_id in INSTALLABLE_ITEM_IDS:
             self.show_toast(f"{tool.label}: E 키로 설치할 수 있습니다")
             return
+        if tool.heal_amount > 0:
+            self.show_toast(f"{tool.label}: E 키로 먹을 수 있습니다")
+            return
         if tool.item_id == "stone":
             self.show_toast(f"{tool.label}: 마우스로 조준하고 좌클릭해 던집니다")
             return
@@ -1422,10 +1484,34 @@ class Game:
 
     def _use_equipped_with_e(self) -> None:
         stack = self.model.tool_slot
+        if stack is not None and stack.definition.heal_amount > 0:
+            self._consume_equipped_food()
+            return
         if stack is not None and stack.item_id in INSTALLABLE_ITEM_IDS:
             self._place_utility(stack.item_id)
             return
         self._use_tool()
+
+    def _consume_equipped_food(self) -> None:
+        stack = self.model.tool_slot
+        if stack is None or stack.definition.heal_amount <= 0:
+            return
+        if self.player.dead:
+            self.show_toast("쓰러진 상태에서는 먹을 수 없습니다", error=True)
+            return
+        label = stack.definition.label
+        heal_amount = stack.definition.heal_amount
+        consumed = self.model.take(SlotRef.tool(), 1)
+        if consumed is None:
+            return
+        restored = self.player.restore_hp(heal_amount)
+        if restored > 0:
+            self.show_toast(
+                f"{label} 1개 섭취 · HP +{int(restored)} "
+                f"({int(self.player.hp)}/{int(self.player.max_hp)})"
+            )
+        else:
+            self.show_toast(f"{label} 1개 섭취 · HP가 이미 가득 찼습니다")
 
     def _craft_recipe(self, recipe: CraftingRecipe) -> None:
         if not self.model.has_recipe_ingredients(recipe):
@@ -2231,8 +2317,14 @@ class Game:
 
     def _draw_enemy(self, enemy: EnemyAI) -> None:
         size = enemy.display_size * self.camera_zoom
+        flight_bob = 0.0
+        if enemy.animal == "crow" and enemy.alive:
+            frame_count, _fps, _loops = ANIMAL_ANIMATIONS["crow"][enemy.state]
+            phase = (enemy.frame_index % frame_count) / frame_count
+            flight_bob = math.sin(phase * math.tau) * 7.0
         screen_x, screen_y = self.world_to_screen(
-            enemy.x, enemy.y + enemy.display_size * 0.42
+            enemy.x,
+            enemy.y + enemy.display_size * 0.42 + flight_bob,
         )
         if (
             screen_x + size / 2 < -40

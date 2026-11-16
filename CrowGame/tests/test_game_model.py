@@ -26,6 +26,7 @@ class InventoryModelTests(unittest.TestCase):
     def test_harvested_fruit_uses_the_apple_asset(self) -> None:
         self.assertEqual("사과", ITEMS["fruit"].label)
         self.assertEqual("apple.png", ITEMS["fruit"].icon_filename)
+        self.assertEqual(5, ITEMS["fruit"].heal_amount)
         self.assertTrue((PROJECT_DIR / "assets" / "apple.png").exists())
 
     def test_definition_and_demo_sizes(self) -> None:

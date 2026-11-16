@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from CrowGame.main import (  # noqa: E402
+    ACTION_BODY_FRAMES,
     ACTION_STATES,
     ATTACK_FRAMES,
     FRAME_HEIGHT,
@@ -21,7 +22,7 @@ from CrowGame.main import (  # noqa: E402
     MOVE_FRAMES,
     Player,
     STATE_FPS,
-    UNIFIED_ACTION_FRAMES,
+    SIDE_ACTION_FRAMES,
     VERTICAL_TOOL_FRAMES,
 )
 
@@ -43,16 +44,33 @@ class AnimationDataTests(unittest.TestCase):
         self.assertEqual(96, IDLE_FRAMES["right"][0].left)
         self.assertEqual(208, IDLE_FRAMES["left"][0].left)
 
-    def test_all_tool_actions_use_the_same_front_and_back_body_frames(self) -> None:
+    def test_front_and_back_actions_share_consistent_body_frames(self) -> None:
         player = Player(sprite_sheet=None)
-        expected_rows = {"down": 192, "left": 192, "right": 192, "up": 144}
+        expected_rows = {"down": 192, "up": 144}
         for direction, expected_row in expected_rows.items():
             for state in ("attack", "axe", "mine", "fish"):
                 player.direction = direction
                 player.state = state
                 frames = player._frames_for_state()
-                self.assertEqual(UNIFIED_ACTION_FRAMES[direction], frames)
+                self.assertEqual(VERTICAL_TOOL_FRAMES[direction], frames)
                 self.assertTrue(all(frame.top == expected_row for frame in frames))
+
+    def test_horizontal_tool_actions_use_side_facing_swing_frames(self) -> None:
+        player = Player(sprite_sheet=None)
+        for state in ("attack", "axe", "mine", "fish"):
+            for direction in ("left", "right"):
+                player.state = state
+                player.direction = direction
+                self.assertEqual(
+                    SIDE_ACTION_FRAMES[state][direction],
+                    player._frames_for_state(),
+                )
+                self.assertEqual(
+                    ACTION_BODY_FRAMES[state][direction],
+                    player._frames_for_state(),
+                )
+        self.assertTrue(all(frame.flip == "h" for frame in SIDE_ACTION_FRAMES["axe"]["left"]))
+        self.assertTrue(all(frame.flip == "" for frame in SIDE_ACTION_FRAMES["axe"]["right"]))
 
     def test_releasing_horizontal_move_keeps_last_facing_direction(self) -> None:
         cases = (("right", p2.SDLK_d), ("left", p2.SDLK_a))

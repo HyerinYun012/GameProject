@@ -43,6 +43,7 @@ def main() -> None:
     projectile_aim_preview = generated / "game_preview_projectile_aim.png"
     ai_hurt_preview = generated / "game_preview_ai_hurt.png"
     ai_attack_preview = generated / "game_preview_ai_attack.png"
+    crow_flight_preview = generated / "game_preview_crow_flight.png"
     action_previews = {
         "attack": generated / "game_preview_attack.png",
         "axe": generated / "game_preview_axe.png",
@@ -125,6 +126,20 @@ def main() -> None:
             p2.update_canvas()
 
         game._load_map("crow_map.json", "player_start")
+        crow = game.enemies["crow_map.json"][0]
+        game.player.x = crow.x - 290
+        game.player.y = crow.y
+        game.player.state = "idle"
+        game.player.direction = "right"
+        crow._set_state("walk")
+        crow.direction_row = 2
+        crow.frame_index = 2
+        game._update_camera()
+        game.toast = "까마귀 비행 · 8방향 · 12fps 날갯짓"
+        game.draw(present=False)
+        capture(crow_flight_preview)
+        p2.update_canvas()
+
         tree = next(
             entity
             for entity in game.world_entities["crow_map.json"]
@@ -224,6 +239,7 @@ def main() -> None:
     print(projectile_aim_preview)
     print(ai_hurt_preview)
     print(ai_attack_preview)
+    print(crow_flight_preview)
     for destination in action_previews.values():
         print(destination)
     for destination in direction_previews.values():

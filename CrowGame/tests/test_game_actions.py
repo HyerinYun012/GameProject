@@ -18,6 +18,7 @@ from CrowGame.game_model import (  # noqa: E402
     SlotRef,
 )
 from CrowGame.main import (  # noqa: E402
+    ANIMAL_ANIMATIONS,
     MAX_HP,
     MAX_SP,
     DragState,
@@ -194,6 +195,63 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual(MAX_HP, player.hp)
         self.assertFalse(player.dead)
 
+    def test_player_healing_is_capped_at_max_hp(self) -> None:
+        player = Player(sprite_sheet=None)
+        player.hp = 97.0
+        self.assertEqual(3.0, player.restore_hp(5.0))
+        self.assertEqual(MAX_HP, player.hp)
+
+    def test_equipped_apple_consumes_one_and_heals_five(self) -> None:
+        game = make_game()
+        game.player.hp = 90.0
+        game.model.tool_slot = ItemStack("fruit", 2)
+
+        game._use_equipped_with_e()
+
+        self.assertEqual(95.0, game.player.hp)
+        self.assertEqual(1, game.model.tool_slot.count)
+        self.assertIn("HP +5", game.toast)
+
+        game._use_equipped_with_e()
+        self.assertEqual(100.0, game.player.hp)
+        self.assertIsNone(game.model.tool_slot)
+
+    def test_dead_player_does_not_consume_equipped_apple(self) -> None:
+        game = make_game()
+        game.player.take_damage(game.player.hp)
+        game.model.tool_slot = ItemStack("fruit", 2)
+
+        game._use_equipped_with_e()
+
+        self.assertEqual(0.0, game.player.hp)
+        self.assertEqual(2, game.model.tool_slot.count)
+        self.assertIn("먹을 수 없습니다", game.toast)
+
+    def test_crow_animation_uses_asset_flight_timing(self) -> None:
+        self.assertEqual((4, 8.0, True), ANIMAL_ANIMATIONS["crow"]["idle"])
+        self.assertEqual((6, 12.0, True), ANIMAL_ANIMATIONS["crow"]["walk"])
+        self.assertEqual((6, 10.0, False), ANIMAL_ANIMATIONS["crow"]["death"])
+
+        crow = EnemyAI.create("crow", 0.0, 0.0)
+        crow._set_state("walk")
+        crow._advance_animation(1.0 / 12.0)
+        self.assertEqual(1, crow.frame_index)
+
+    def test_flying_crow_does_not_get_stuck_on_ground_collisions(self) -> None:
+        blocked_map = SimpleNamespace(
+            resolve_movement=lambda x, y, _dx, _dy: (x, y)
+        )
+        crow = EnemyAI.create("crow", 0.0, 0.0)
+        wolf = EnemyAI.create("wolf", 0.0, 0.0)
+
+        crow._move_toward(100.0, 0.0, 0.1, blocked_map)
+        wolf._move_toward(100.0, 0.0, 0.1, blocked_map)
+
+        self.assertGreater(crow.x, 0.0)
+        self.assertEqual("walk", crow.state)
+        self.assertEqual(0.0, wolf.x)
+        self.assertEqual("idle", wolf.state)
+
     def test_each_tool_dispatches_to_the_expected_action(self) -> None:
         cases = {
             "wooden_axe": "axe",
@@ -228,6 +286,18 @@ class GameActionTests(unittest.TestCase):
         game._key_down(SimpleNamespace(key=p2.SDLK_e, repeat=0))
         self.assertEqual("axe", game.player.state)
         self.assertIn("도끼질", game.toast)
+
+    def test_e_key_eats_one_equipped_apple(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        game.player.hp = 80.0
+        game.model.tool_slot = ItemStack("fruit", 3)
+
+        game._key_down(SimpleNamespace(key=p2.SDLK_e, repeat=0))
+
+        self.assertEqual(85.0, game.player.hp)
+        self.assertEqual(2, game.model.tool_slot.count)
 
     def test_mouse_drag_from_hotbar_moves_the_same_inventory_slot(self) -> None:
         game = make_game()

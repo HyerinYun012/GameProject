@@ -27,6 +27,7 @@ class ItemDefinition:
     defense: int = 0
     action: str | None = None
     max_durability: int | None = None
+    heal_amount: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +86,8 @@ ITEMS: dict[str, ItemDefinition] = {
     "stone": ItemDefinition("stone", "돌", "stone.png", "material", max_stack=99),
     "fiber": ItemDefinition("fiber", "섬유", "fiber.png", "material", max_stack=99),
     "fruit": ItemDefinition(
-        "fruit", "사과", "apple.png", "material", max_stack=99
+        "fruit", "사과", "apple.png", "material", max_stack=99,
+        heal_amount=5,
     ),
     "travel_bedding": ItemDefinition("travel_bedding", "간이 침구", "travel bedding set.png", "utility"),
     "campfire": ItemDefinition("campfire", "모닥불", "bonfire.png", "utility"),
