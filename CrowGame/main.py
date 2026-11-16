@@ -129,10 +129,10 @@ ACTION_STATES = frozenset({"hurt", "death", "attack", "axe", "mine", "fish"})
 ANIMAL_ANIMATIONS: dict[str, dict[str, tuple[int, float, bool]]] = {
     "crow": {
         "idle": (4, 8.0, True),
-        "walk": (6, 12.0, True),
+        "walk": (6, 14.0, True),
         # The crow pack has no separate attack sheet; one brisk non-looping
         # flight cycle is used as a diving strike.
-        "attack": (6, 12.0, False),
+        "attack": (6, 14.0, False),
         "hurt": (3, 12.0, False),
         "death": (6, 10.0, False),
     },
@@ -367,6 +367,7 @@ class EnemyAI:
     search_timer: float = 0.0
     alert_refresh: float = 0.0
     just_alerted: bool = False
+    flight_clock: float = 0.0
 
     @classmethod
     def create(cls, animal: str, x: float, y: float) -> "EnemyAI":
@@ -473,7 +474,8 @@ class EnemyAI:
         dx = target_x - self.x
         dy = target_y - self.y
         distance = math.hypot(dx, dy)
-        if distance <= 12.0:
+        stop_distance = 2.0 if self.animal == "crow" else 12.0
+        if distance <= stop_distance:
             self._set_state("idle")
             return
         speed = float(ANIMAL_STATS[self.animal]["speed"])
@@ -509,9 +511,19 @@ class EnemyAI:
         self.provoked_timer = max(0.0, self.provoked_timer - dt)
         self.alert_refresh = max(0.0, self.alert_refresh - dt)
         self.just_alerted = False
+        if self.animal == "crow" and self.alive:
+            self.flight_clock += dt
 
         state_before = self.state
         if state_before in ("hurt", "death", "attack"):
+            if (
+                state_before == "attack"
+                and affinity >= 80
+                and self.provoked_timer <= 0
+            ):
+                self.attack_pending = False
+                self._set_state("idle")
+                return 0.0
             self._advance_animation(dt)
             if (
                 state_before == "attack"
@@ -560,7 +572,11 @@ class EnemyAI:
                 self._face_vector(player.x - self.x, player.y - self.y)
                 attack_range = float(ANIMAL_STATS[self.animal]["attack_range"])
                 if math.hypot(player.x - self.x, player.y - self.y) <= attack_range:
-                    if self.attack_cooldown <= 0:
+                    can_attack_first = affinity < 80
+                    may_retaliate = self.provoked_timer > 0
+                    if self.attack_cooldown <= 0 and (
+                        can_attack_first or may_retaliate
+                    ):
                         self._set_state("attack")
                         self.attack_pending = True
                         self.attack_cooldown = float(
@@ -596,9 +612,16 @@ class EnemyAI:
                 self._set_state("idle")
         else:
             self.patrol_clock += dt
-            radius = 150.0 if self.animal == "crow" else 105.0
-            target_x = self.home_x + math.cos(self.patrol_clock * 0.65) * radius
-            target_y = self.home_y + math.sin(self.patrol_clock * 0.47) * radius
+            if self.animal == "crow":
+                # Chase a point ahead on one smooth ellipse instead of catching
+                # and stopping on a slowly drifting target every few frames.
+                patrol_angle = self.patrol_clock * 0.46 + 0.85
+                target_x = self.home_x + math.cos(patrol_angle) * 190.0
+                target_y = self.home_y + math.sin(patrol_angle) * 125.0
+            else:
+                radius = 105.0
+                target_x = self.home_x + math.cos(self.patrol_clock * 0.65) * radius
+                target_y = self.home_y + math.sin(self.patrol_clock * 0.47) * radius
             self._move_toward(target_x, target_y, dt, map_data)
         self._advance_animation(dt)
         return 0.0
@@ -2596,11 +2619,14 @@ class Game:
         flight_bob = 0.0
         dive_offset = 0.0
         if enemy.animal == "crow" and enemy.alive:
-            frame_count, _fps, _loops = ANIMAL_ANIMATIONS["crow"][enemy.state]
-            phase = (enemy.frame_index % frame_count) / frame_count
-            flight_bob = math.sin(phase * math.tau) * 7.0
+            frame_count, fps, _loops = ANIMAL_ANIMATIONS["crow"][enemy.state]
+            flight_bob = math.sin(enemy.flight_clock * math.tau * 1.15) * 5.0
             if enemy.state == "attack":
-                attack_progress = enemy.frame_index / max(1, frame_count - 1)
+                visual_frame = min(
+                    enemy.frame_index + enemy.frame_clock * fps,
+                    frame_count - 1,
+                )
+                attack_progress = visual_frame / max(1, frame_count - 1)
                 dive = math.sin(math.pi * attack_progress)
                 dive_offset = -enemy.display_size * 0.42 * dive
                 size *= 1.0 - 0.28 * dive

@@ -234,13 +234,31 @@ class GameActionTests(unittest.TestCase):
 
     def test_crow_animation_uses_asset_flight_timing(self) -> None:
         self.assertEqual((4, 8.0, True), ANIMAL_ANIMATIONS["crow"]["idle"])
-        self.assertEqual((6, 12.0, True), ANIMAL_ANIMATIONS["crow"]["walk"])
+        self.assertEqual((6, 14.0, True), ANIMAL_ANIMATIONS["crow"]["walk"])
         self.assertEqual((6, 10.0, False), ANIMAL_ANIMATIONS["crow"]["death"])
 
         crow = EnemyAI.create("crow", 0.0, 0.0)
         crow._set_state("walk")
-        crow._advance_animation(1.0 / 12.0)
+        crow._advance_animation(1.0 / 14.0)
         self.assertEqual(1, crow.frame_index)
+
+    def test_crow_patrol_and_flight_clock_advance_without_stop_start_jitter(self) -> None:
+        open_map = SimpleNamespace(
+            resolve_movement=lambda x, y, dx, dy: (x + dx, y + dy)
+        )
+        player = Player(sprite_sheet=None)
+        player.x = 5000.0
+        player.y = 5000.0
+        crow = EnemyAI.create("crow", 500.0, 500.0)
+        positions = []
+
+        for _ in range(30):
+            crow.update(1.0 / 60.0, open_map, player, 100, 1.0)
+            positions.append((crow.x, crow.y))
+
+        self.assertEqual(30, len(set(positions)))
+        self.assertEqual("walk", crow.state)
+        self.assertAlmostEqual(0.5, crow.flight_clock, places=5)
 
     def test_flying_crow_does_not_get_stuck_on_ground_collisions(self) -> None:
         blocked_map = SimpleNamespace(
@@ -641,29 +659,53 @@ class GameActionTests(unittest.TestCase):
             [enemy.animal for enemy in game.enemies[wolf_map.name]],
         )
 
-    def test_nonmax_affinity_can_detect_but_reconciled_ai_stays_peaceful(self) -> None:
+    def test_affinity_80_to_99_detects_but_never_attacks_first(self) -> None:
         game = make_game()
         game.player.x = 500.0
         game.player.y = 500.0
-        close_enemy = EnemyAI.create("crow", 535.0, 500.0)
-        peaceful_enemy = EnemyAI.create("crow", 535.0, 500.0)
-        close_enemy.direction_row = 6
-        peaceful_enemy.direction_row = 6
+        passive_enemy = EnemyAI.create("crow", 535.0, 500.0)
+        hostile_enemy = EnemyAI.create("crow", 535.0, 500.0)
+        reconciled_enemy = EnemyAI.create("crow", 535.0, 500.0)
+        passive_enemy.direction_row = 6
+        hostile_enemy.direction_row = 6
+        reconciled_enemy.direction_row = 6
 
-        damage = 0.0
+        passive_damage = 0.0
+        hostile_damage = 0.0
         for _ in range(30):
-            damage += close_enemy.update(
+            passive_damage += passive_enemy.update(
                 0.1, game.map_data, game.player, 99, game.camera_zoom
             )
-        peaceful_damage = sum(
-            peaceful_enemy.update(
+            hostile_damage += hostile_enemy.update(
+                0.1, game.map_data, game.player, 79, game.camera_zoom
+            )
+        reconciled_damage = sum(
+            reconciled_enemy.update(
                 0.1, game.map_data, game.player, 100, game.camera_zoom
             )
             for _ in range(20)
         )
 
+        self.assertEqual("alerted", passive_enemy.awareness)
+        self.assertEqual(0.0, passive_damage)
+        self.assertGreater(hostile_damage, 0.0)
+        self.assertEqual(0.0, reconciled_damage)
+
+    def test_affinity_80_to_99_can_retaliate_after_player_attacks(self) -> None:
+        game = make_game()
+        game.player.x = 500.0
+        game.player.y = 500.0
+        crow = EnemyAI.create("crow", 535.0, 500.0)
+        crow.take_damage(1)
+        crow.receive_alert(game.player.x, game.player.y)
+
+        damage = 0.0
+        for _ in range(40):
+            damage += crow.update(
+                0.1, game.map_data, game.player, 94, game.camera_zoom
+            )
+
         self.assertGreater(damage, 0.0)
-        self.assertEqual(0.0, peaceful_damage)
 
     def test_detection_uses_distance_angle_and_confirmation_time(self) -> None:
         game = make_game()

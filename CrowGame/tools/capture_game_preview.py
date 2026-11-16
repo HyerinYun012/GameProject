@@ -136,8 +136,9 @@ def main() -> None:
         crow.awareness = "suspicious"
         crow.direction_row = 2
         crow.frame_index = 2
+        crow.flight_clock = 0.18
         game._update_camera()
-        game.toast = "까마귀 비행 · 8방향 · 12fps 날갯짓"
+        game.toast = "까마귀 비행 · 연속 부유 · 14fps 날갯짓"
         game.draw(present=False)
         capture(crow_flight_preview)
         p2.update_canvas()
