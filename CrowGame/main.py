@@ -24,6 +24,7 @@ try:  # Works both as ``python main.py`` and ``python -m CrowGame.main``.
         GID_DIAGONAL_FLIP,
         GID_HORIZONTAL_FLIP,
         GID_VERTICAL_FLIP,
+        MAP_SCALE,
         MapData,
         TileSpriteDefinition,
         WorldEntityDefinition,
@@ -44,6 +45,7 @@ except ImportError:  # pragma: no cover - exercised by the normal command file.
         GID_DIAGONAL_FLIP,
         GID_HORIZONTAL_FLIP,
         GID_VERTICAL_FLIP,
+        MAP_SCALE,
         MapData,
         TileSpriteDefinition,
         WorldEntityDefinition,
@@ -71,22 +73,24 @@ FRUIT_COOLDOWN_SECONDS = 30.0
 THROWN_DROP_MIN_SCREEN_DISTANCE = 80.0
 THROWN_DROP_MAX_SCREEN_DISTANCE = 130.0
 THROWN_DROP_SCREEN_SIZE = 76.0
-PROJECTILE_MAX_SCREEN_RANGE = 680.0
+WORLD_TILE_SIZE = 32.0 * MAP_SCALE
+PROJECTILE_MAX_TILES = 5.0
 PROJECTILE_SCREEN_SPEED = 760.0
 PROJECTILE_ARC_SCREEN_HEIGHT = 92.0
 PROJECTILE_RELEASE_DELAY = 0.10
 THROWABLE_ITEM_IDS = frozenset({"wooden_spear", "stone_spear", "stone"})
 PROJECTILE_DAMAGE = {
-    "wooden_spear": 35,
-    "stone_spear": 50,
+    "wooden_spear": 15,
+    "stone_spear": 30,
     "stone": 18,
 }
 MELEE_DAMAGE = {
-    "wooden_sword": 25,
-    "stone_sword": 35,
-    "wooden_spear": 30,
-    "stone_spear": 40,
+    "wooden_sword": 10,
+    "stone_sword": 20,
 }
+MELEE_RANGE_TILES = {"wooden_sword": 1.2, "stone_sword": 1.2}
+UNARMED_DAMAGE = 5
+UNARMED_RANGE_TILES = 1.0
 PLACED_UTILITY_SCREEN_DISTANCE = 130.0
 UTILITY_PLACEMENT_SCREEN_DISTANCE = 105.0
 INSTALLABLE_ITEM_IDS = frozenset({"travel_bedding", "campfire"})
@@ -149,23 +153,25 @@ ANIMAL_ANIMATIONS: dict[str, dict[str, tuple[int, float, bool]]] = {
 }
 ANIMAL_STATS = {
     "crow": {
-        "hp": 35, "size": 210.0, "speed": 100.0, "hit_radius": 68.0,
-        "attack_range": 68.0, "attack_damage": 8.0,
+        "hp": 35, "size": 210.0, "speed": 250.0, "hit_radius": 68.0,
+        "attack_range": 68.0, "attack_damage": 20.0, "attack_cooldown": 3.5,
     },
     "wolf": {
-        "hp": 70, "size": 285.0, "speed": 125.0, "hit_radius": 88.0,
-        "attack_range": 82.0, "attack_damage": 14.0,
+        "hp": 70, "size": 285.0, "speed": 200.0, "hit_radius": 88.0,
+        "attack_range": 82.0, "attack_damage": 40.0, "attack_cooldown": 1.35,
     },
     "bear": {
-        "hp": 120, "size": 375.0, "speed": 90.0, "hit_radius": 120.0,
-        "attack_range": 105.0, "attack_damage": 20.0,
+        "hp": 120, "size": 375.0, "speed": 160.0, "hit_radius": 120.0,
+        "attack_range": 105.0, "attack_damage": 55.0, "attack_cooldown": 1.8,
     },
 }
-MAP_AI_KINDS: dict[str, tuple[str, ...]] = {
+MAP_NATIVE_AI_KINDS: dict[str, tuple[str, ...]] = {
     "crow_map.json": ("crow",),
     "wolf_map.json": ("wolf",),
     "bear_map.json": ("bear",),
 }
+# Backwards-compatible name for code that only needs each map's native species.
+MAP_AI_KINDS = MAP_NATIVE_AI_KINDS
 MAP_SPECIES = {
     "crow_map.json": "crow",
     "wolf_map.json": "wolf",
@@ -174,15 +180,38 @@ MAP_SPECIES = {
 SPECIES_LABELS = {"crow": "까마귀", "wolf": "늑대", "bear": "곰"}
 AFFINITY_MAX = 100
 AFFINITY_LOSS_PER_HIT = 5
-AI_DETECTION_SCREEN_RANGES = {
-    "hostile": 520.0,
-    "wary": 230.0,
-    "near_friendly": 88.0,
-    "reconciled": 0.0,
+AI_SENSES: dict[str, dict[str, float]] = {
+    "crow": {
+        "vision_tiles": 7.0,
+        "vision_angle": 110.0,
+        "alert_tiles": 10.0,
+        "search_tiles": 2.0,
+        "confirm_seconds": 0.8,
+        "max_chase_tiles": 12.0,
+        "search_seconds": 6.0,
+    },
+    "wolf": {
+        "vision_tiles": 6.0,
+        "vision_angle": 120.0,
+        "alert_tiles": 8.0,
+        "search_tiles": 3.0,
+        "confirm_seconds": 0.5,
+        "max_chase_tiles": 14.0,
+        "search_seconds": 8.0,
+    },
+    "bear": {
+        "vision_tiles": 3.0,
+        "vision_angle": 120.0,
+        "alert_tiles": 0.0,
+        "search_tiles": 2.0,
+        "confirm_seconds": 0.25,
+        "max_chase_tiles": 6.0,
+        "search_seconds": 6.0,
+    },
 }
-AI_PROVOKED_SCREEN_RANGE = 620.0
 AI_ATTACK_COOLDOWN = 1.35
 AI_PROVOKED_SECONDS = 6.0
+AI_ALERT_REFRESH_SECONDS = 1.25
 AFFINITY_COLORS = {
     "hostile": (205, 54, 65),
     "wary": (224, 145, 54),
@@ -199,6 +228,20 @@ def affinity_relationship(value: int) -> str:
     if value >= 40:
         return "wary"
     return "hostile"
+
+
+def desired_map_species(
+    map_name: str, species_affinity: dict[str, int]
+) -> tuple[str, ...]:
+    """Return native animals plus unresolved species that follow downstream."""
+    desired = list(MAP_NATIVE_AI_KINDS.get(map_name, ()))
+    if map_name in ("wolf_map.json", "bear_map.json"):
+        if species_affinity.get("crow", 0) < AFFINITY_MAX:
+            desired.append("crow")
+    if map_name == "bear_map.json":
+        if species_affinity.get("wolf", 0) < AFFINITY_MAX:
+            desired.append("wolf")
+    return tuple(desired)
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +359,14 @@ class EnemyAI:
     attack_cooldown: float = 0.0
     attack_pending: bool = False
     provoked_timer: float = 0.0
+    awareness: str = "unaware"
+    suspicion_timer: float = 0.0
+    last_seen_x: float | None = None
+    last_seen_y: float | None = None
+    search_clock: float = 0.0
+    search_timer: float = 0.0
+    alert_refresh: float = 0.0
+    just_alerted: bool = False
 
     @classmethod
     def create(cls, animal: str, x: float, y: float) -> "EnemyAI":
@@ -362,6 +413,60 @@ class EnemyAI:
         sector = round(angle / (math.pi / 4.0)) % 8
         self.direction_row = (sector + 2) % 8
 
+    def _forward_vector(self) -> tuple[float, float]:
+        directions = (
+            (0.0, -1.0),
+            (math.sqrt(0.5), -math.sqrt(0.5)),
+            (1.0, 0.0),
+            (math.sqrt(0.5), math.sqrt(0.5)),
+            (0.0, 1.0),
+            (-math.sqrt(0.5), math.sqrt(0.5)),
+            (-1.0, 0.0),
+            (-math.sqrt(0.5), -math.sqrt(0.5)),
+        )
+        return directions[self.direction_row % 8]
+
+    def _can_see_player(self, player: Player, affinity: int) -> bool:
+        if affinity >= AFFINITY_MAX or player.dead or not self.alive:
+            return False
+        senses = AI_SENSES[self.animal]
+        dx = player.x - self.x
+        dy = player.y - self.y
+        distance = math.hypot(dx, dy)
+        max_chase = senses["max_chase_tiles"] * WORLD_TILE_SIZE
+        if self.provoked_timer > 0:
+            return distance <= max_chase
+        if distance > senses["vision_tiles"] * WORLD_TILE_SIZE:
+            return False
+        if distance <= 0.01:
+            return True
+        forward_x, forward_y = self._forward_vector()
+        alignment = (dx * forward_x + dy * forward_y) / distance
+        half_angle = math.radians(senses["vision_angle"] / 2.0)
+        return alignment >= math.cos(half_angle)
+
+    def receive_alert(self, x: float, y: float) -> None:
+        if not self.alive:
+            return
+        self.last_seen_x = x
+        self.last_seen_y = y
+        self.awareness = "alerted"
+        self.suspicion_timer = AI_SENSES[self.animal]["confirm_seconds"]
+        self.search_timer = AI_SENSES[self.animal]["search_seconds"]
+        self.search_clock = 0.0
+
+    def _chase_target(self, target_x: float, target_y: float) -> tuple[float, float]:
+        max_distance = AI_SENSES[self.animal]["max_chase_tiles"] * WORLD_TILE_SIZE
+        dx = target_x - self.home_x
+        dy = target_y - self.home_y
+        distance = math.hypot(dx, dy)
+        if distance <= max_distance or distance <= 0.01:
+            return target_x, target_y
+        return (
+            self.home_x + dx / distance * max_distance,
+            self.home_y + dy / distance * max_distance,
+        )
+
     def _move_toward(
         self, target_x: float, target_y: float, dt: float, map_data: MapData
     ) -> None:
@@ -399,8 +504,11 @@ class EnemyAI:
         affinity: int = AFFINITY_MAX,
         camera_zoom: float = 1.0,
     ) -> float:
+        del camera_zoom  # Perception is defined in world tiles, not zoomed pixels.
         self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
         self.provoked_timer = max(0.0, self.provoked_timer - dt)
+        self.alert_refresh = max(0.0, self.alert_refresh - dt)
+        self.just_alerted = False
 
         state_before = self.state
         if state_before in ("hurt", "death", "attack"):
@@ -414,32 +522,78 @@ class EnemyAI:
                 return float(ANIMAL_STATS[self.animal]["attack_damage"])
             return 0.0
 
-        should_engage = False
-        distance_screen = math.inf
-        if player is not None and not player.dead:
-            dx = player.x - self.x
-            dy = player.y - self.y
-            distance_screen = math.hypot(dx, dy) * camera_zoom
-            relationship = affinity_relationship(affinity)
-            detection_range = AI_DETECTION_SCREEN_RANGES[relationship]
-            if self.provoked_timer > 0 and affinity < AFFINITY_MAX:
-                detection_range = max(detection_range, AI_PROVOKED_SCREEN_RANGE)
-            should_engage = detection_range > 0 and distance_screen <= detection_range
+        sees_player = player is not None and self._can_see_player(player, affinity)
+        senses = AI_SENSES[self.animal]
+        if affinity >= AFFINITY_MAX:
+            self.awareness = "unaware"
+            self.suspicion_timer = 0.0
+            self.last_seen_x = None
+            self.last_seen_y = None
+        elif sees_player and player is not None:
+            self.last_seen_x = player.x
+            self.last_seen_y = player.y
+            self.search_timer = senses["search_seconds"]
+            if self.awareness in ("unaware", "searching"):
+                self.awareness = "suspicious"
+                self.suspicion_timer = 0.0
+            if self.awareness == "suspicious":
+                self.suspicion_timer += dt
+                if self.suspicion_timer >= senses["confirm_seconds"]:
+                    self.awareness = "alerted"
+                    self.just_alerted = True
+                    self.alert_refresh = AI_ALERT_REFRESH_SECONDS
+            elif self.awareness == "alerted" and self.alert_refresh <= 0:
+                self.just_alerted = True
+                self.alert_refresh = AI_ALERT_REFRESH_SECONDS
+        elif self.awareness == "suspicious":
+            self.suspicion_timer = max(0.0, self.suspicion_timer - dt * 2.0)
+            if self.suspicion_timer <= 0:
+                self.awareness = "unaware"
 
-        if should_engage and player is not None:
-            dx = player.x - self.x
-            dy = player.y - self.y
-            self._face_vector(dx, dy)
-            attack_range = float(ANIMAL_STATS[self.animal]["attack_range"])
-            if distance_screen <= attack_range:
-                if self.attack_cooldown <= 0:
-                    self._set_state("attack")
-                    self.attack_pending = True
-                    self.attack_cooldown = AI_ATTACK_COOLDOWN
+        if self.awareness == "suspicious" and player is not None:
+            self._face_vector(player.x - self.x, player.y - self.y)
+            self._set_state("idle")
+        elif self.awareness == "alerted" and self.last_seen_x is not None and self.last_seen_y is not None:
+            target_x, target_y = self._chase_target(self.last_seen_x, self.last_seen_y)
+            distance_to_target = math.hypot(target_x - self.x, target_y - self.y)
+            if sees_player and player is not None:
+                self._face_vector(player.x - self.x, player.y - self.y)
+                attack_range = float(ANIMAL_STATS[self.animal]["attack_range"])
+                if math.hypot(player.x - self.x, player.y - self.y) <= attack_range:
+                    if self.attack_cooldown <= 0:
+                        self._set_state("attack")
+                        self.attack_pending = True
+                        self.attack_cooldown = float(
+                            ANIMAL_STATS[self.animal]["attack_cooldown"]
+                        )
+                    else:
+                        self._set_state("idle")
                 else:
-                    self._set_state("idle")
+                    self._move_toward(target_x, target_y, dt, map_data)
+            elif distance_to_target > 24.0:
+                self._move_toward(target_x, target_y, dt, map_data)
             else:
-                self._move_toward(player.x, player.y, dt, map_data)
+                self.awareness = "searching"
+                self.search_clock = 0.0
+                self._set_state("idle")
+        elif self.awareness == "searching" and self.last_seen_x is not None and self.last_seen_y is not None:
+            self.search_timer = max(0.0, self.search_timer - dt)
+            self.search_clock += dt
+            if self.search_timer <= 0:
+                self.awareness = "unaware"
+                self.last_seen_x = None
+                self.last_seen_y = None
+            else:
+                radius = senses["search_tiles"] * WORLD_TILE_SIZE
+                target_x = self.last_seen_x + math.cos(self.search_clock * 1.4) * radius
+                target_y = self.last_seen_y + math.sin(self.search_clock * 1.4) * radius
+                target_x, target_y = self._chase_target(target_x, target_y)
+                self._move_toward(target_x, target_y, dt, map_data)
+        elif self.animal == "bear":
+            if math.hypot(self.home_x - self.x, self.home_y - self.y) > 16.0:
+                self._move_toward(self.home_x, self.home_y, dt, map_data)
+            else:
+                self._set_state("idle")
         else:
             self.patrol_clock += dt
             radius = 150.0 if self.animal == "crow" else 105.0
@@ -537,29 +691,20 @@ MOVE_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "up": frames_at(192, VERTICAL_MOVE_X),
 }
 
-# Front/back actions share clean poses. Horizontal actions use the atlas's real
-# side-facing bodies so the character looks toward the swing direction.
+# Front/back actions use the clean poses already established by the prototype.
+# Side actions are authored here from clean idle bodies plus procedural recoil;
+# no pre-existing side tool/action cells from the atlas are referenced.
 VERTICAL_TOOL_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "down": frames_at(192, (176, 208, 240, 272)),
     "up": frames_at(144, (176, 208, 240, 272)),
 }
+CUSTOM_SIDE_BODY_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    "right": frames_at(0, (96, 128, 176, 96)),
+    "left": frames_at(0, (208, 240, 272, 208)),
+}
 SIDE_ACTION_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
-    "attack": {
-        "right": frames_at(288, (0, 32, 32, 0)),
-        "left": frames_at(288, (64, 96, 96, 64)),
-    },
-    "axe": {
-        "right": frames_at(288, (176, 208, 240, 272)),
-        "left": frames_at(288, (176, 208, 240, 272), "h"),
-    },
-    "mine": {
-        "right": frames_at(240, (176, 208, 240, 272)),
-        "left": frames_at(240, (176, 208, 240, 272), "h"),
-    },
-    "fish": {
-        "right": frames_at(432, (176, 208, 208, 176)),
-        "left": frames_at(432, (240, 272, 272, 240)),
-    },
+    state: CUSTOM_SIDE_BODY_FRAMES
+    for state in ("attack", "axe", "mine", "fish")
 }
 
 ACTION_BODY_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
@@ -569,6 +714,47 @@ ACTION_BODY_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
         **side_frames,
     }
     for state, side_frames in SIDE_ACTION_FRAMES.items()
+}
+
+# Per-phase (x, y, rotation) paths for the actual equipped item icon. Left is
+# produced by mirroring these authored right-facing paths.
+CUSTOM_SIDE_TOOL_PATHS = {
+    "axe": (
+        (
+            (16.0, 105.0, 0.95),
+            (37.0, 96.0, 0.40),
+            (60.0, 69.0, -0.72),
+            (43.0, 85.0, -0.05),
+        ),
+        62,
+    ),
+    "mine": (
+        (
+            (14.0, 106.0, 0.82),
+            (36.0, 95.0, 0.30),
+            (59.0, 68.0, -0.64),
+            (42.0, 84.0, -0.03),
+        ),
+        62,
+    ),
+    "fish": (
+        (
+            (18.0, 96.0, -0.48),
+            (40.0, 92.0, -0.08),
+            (66.0, 80.0, 0.48),
+            (44.0, 88.0, 0.04),
+        ),
+        68,
+    ),
+    "attack": (
+        (
+            (17.0, 103.0, 0.94),
+            (42.0, 92.0, 0.28),
+            (69.0, 73.0, -0.58),
+            (45.0, 86.0, 0.02),
+        ),
+        66,
+    ),
 }
 
 # Kept as a public alias for older preview/test code; only front/back bodies are
@@ -588,7 +774,7 @@ ATTACK_FRAMES = ACTION_BODY_FRAMES["attack"]
 
 class Player:
     WALK_SPEED = 150.0
-    RUN_SPEED = 255.0
+    RUN_SPEED = 225.0
 
     def __init__(self, sprite_sheet: p2.Image) -> None:
         self.sprite_sheet = sprite_sheet
@@ -779,7 +965,17 @@ class Player:
         )
 
     def _state_transform(self) -> tuple[float, float, float]:
-        """Add recoil and a full-body fall where the source atlas is static."""
+        """Author side-action recoil plus hurt/death motion in code."""
+        if (
+            self.state in ("attack", "axe", "mine", "fish")
+            and self.direction in ("left", "right")
+        ):
+            phase = min(self.frame_index, 3)
+            side = 1.0 if self.direction == "right" else -1.0
+            offset_x = (-5.0, 1.0, 10.0, 2.0)[phase] * side
+            offset_y = (0.0, 3.0, -4.0, 0.0)[phase]
+            rotation = (-0.08, 0.04, 0.13, 0.0)[phase] * side
+            return offset_x, offset_y, rotation
         if self.state == "hurt":
             phase = min(self.frame_index, 2)
             recoil = (14.0, -8.0, 0.0)[phase]
@@ -1215,15 +1411,13 @@ class GameUI:
         ):
             return
 
-        # Side-facing action frames already contain their matching swung tool.
-        # Drawing the inventory icon again would create a doubled weapon.
-        if player.direction in ("left", "right"):
-            return
-
-        is_behind = player.direction == "up"
+        phase = min(player.frame_index, 3)
+        is_side = player.direction in ("left", "right")
+        # On side swings the wind-up passes behind the body, then the tool
+        # crosses in front. Front/back retain their established depth order.
+        is_behind = player.direction == "up" or (is_side and phase == 0)
         if behind != is_behind:
             return
-        phase = min(player.frame_index, 3)
         front_paths = {
             "axe": (
                 ((34.0, 105.0, 0.72), (22.0, 91.0, 0.25), (-4.0, 65.0, -0.68), (27.0, 87.0, 0.15)),
@@ -1260,13 +1454,15 @@ class GameUI:
                 66,
             ),
         }
-        path, size = (back_paths if is_behind else front_paths)[player.state]
+        if is_side:
+            path, size = CUSTOM_SIDE_TOOL_PATHS[player.state]
+        else:
+            path, size = (back_paths if is_behind else front_paths)[player.state]
         offset_x, offset_y, rotation = path[phase]
-        flip = "h" if is_behind else ""
+        flip = "h" if player.direction in ("left", "up") else ""
         if player.direction == "left":
             offset_x = -offset_x
             rotation = -rotation
-            flip = "h"
         image.composite_draw(
             rotation,
             flip,
@@ -1440,7 +1636,22 @@ class Game:
     def _use_tool(self) -> None:
         tool = self.model.equipped_tool_definition
         if tool is None:
-            self.show_toast("툴바에 아이템을 먼저 넣으세요", error=True)
+            if not self.player.start_action("attack"):
+                return
+            enemy = self._nearest_melee_enemy(UNARMED_RANGE_TILES)
+            if enemy is None:
+                self.show_toast("맨손 공격")
+                return
+            damage = enemy.take_damage(UNARMED_DAMAGE)
+            enemy.receive_alert(self.player.x, self.player.y)
+            affinity = self._adjust_species_affinity(
+                enemy.animal, -AFFINITY_LOSS_PER_HIT
+            )
+            self.show_toast(
+                f"{self._enemy_label(enemy)} 맨손 명중 · {damage} 피해 · "
+                f"호감도 -{AFFINITY_LOSS_PER_HIT} ({affinity}/100)",
+                seconds=1.7,
+            )
             return
         if tool.item_id in INSTALLABLE_ITEM_IDS:
             self.show_toast(f"{tool.label}: E 키로 설치할 수 있습니다")
@@ -1457,9 +1668,12 @@ class Game:
         if tool.action and self.player.start_action(tool.action):
             labels = {"attack": "공격", "axe": "도끼질", "mine": "채광", "fish": "낚시"}
             if tool.action == "attack" and tool.item_id in MELEE_DAMAGE:
-                enemy = self._nearest_melee_enemy()
+                enemy = self._nearest_melee_enemy(
+                    MELEE_RANGE_TILES[tool.item_id]
+                )
                 if enemy is not None:
                     damage = enemy.take_damage(MELEE_DAMAGE[tool.item_id])
+                    enemy.receive_alert(self.player.x, self.player.y)
                     durability_text = ""
                     if tool.item_id in ("wooden_sword", "stone_sword"):
                         broke, remaining, label = self._wear_equipped_item(
@@ -1484,10 +1698,13 @@ class Game:
 
     def _use_equipped_with_e(self) -> None:
         stack = self.model.tool_slot
-        if stack is not None and stack.definition.heal_amount > 0:
+        if stack is None:
+            self.show_toast("가까운 상호작용 대상이 없습니다", error=True)
+            return
+        if stack.definition.heal_amount > 0:
             self._consume_equipped_food()
             return
-        if stack is not None and stack.item_id in INSTALLABLE_ITEM_IDS:
+        if stack.item_id in INSTALLABLE_ITEM_IDS:
             self._place_utility(stack.item_id)
             return
         self._use_tool()
@@ -1533,7 +1750,7 @@ class Game:
     def _current_projectiles(self) -> list[ThrownProjectile]:
         return self.projectiles.setdefault(self.map_data.name, [])
 
-    def _nearest_melee_enemy(self) -> EnemyAI | None:
+    def _nearest_melee_enemy(self, range_tiles: float) -> EnemyAI | None:
         direction_vectors = {
             "up": (0.0, 1.0),
             "down": (0.0, -1.0),
@@ -1554,7 +1771,7 @@ class Game:
             else:
                 alignment = (dx * facing_x + dy * facing_y) / distance
             if (
-                distance * self.camera_zoom <= 145.0
+                distance <= range_tiles * WORLD_TILE_SIZE
                 and alignment >= 0.15
                 and distance < nearest_distance
             ):
@@ -1588,7 +1805,7 @@ class Game:
         dx = target_x - start_x
         dy = target_y - start_y
         distance = math.hypot(dx, dy)
-        maximum = PROJECTILE_MAX_SCREEN_RANGE / self.camera_zoom
+        maximum = PROJECTILE_MAX_TILES * WORLD_TILE_SIZE
         if distance > maximum and distance > 0:
             target_x = start_x + dx / distance * maximum
             target_y = start_y + dy / distance * maximum
@@ -1985,6 +2202,7 @@ class Game:
                     break
             if hit_enemy is not None:
                 damage = hit_enemy.take_damage(PROJECTILE_DAMAGE[projectile.item_id])
+                hit_enemy.receive_alert(self.player.x, self.player.y)
                 affinity = self._adjust_species_affinity(
                     hit_enemy.animal, -AFFINITY_LOSS_PER_HIT
                 )
@@ -2026,7 +2244,9 @@ class Game:
                     self.show_toast("창이 착탄 충격으로 파괴되었습니다", error=True)
 
     def _update_enemies(self, dt: float) -> None:
-        for enemy in self._current_enemies():
+        enemies = self._current_enemies()
+        alerts: list[EnemyAI] = []
+        for enemy in enemies:
             damage = enemy.update(
                 dt,
                 self.map_data,
@@ -2036,6 +2256,31 @@ class Game:
             )
             if damage > 0:
                 self.damage_player(damage)
+            if (
+                enemy.just_alerted
+                and enemy.last_seen_x is not None
+                and enemy.last_seen_y is not None
+            ):
+                alerts.append(enemy)
+
+        for source in alerts:
+            alert_distance = (
+                AI_SENSES[source.animal]["alert_tiles"] * WORLD_TILE_SIZE
+            )
+            if alert_distance <= 0:
+                continue
+            for target in enemies:
+                if target is source or not target.alive:
+                    continue
+                if self.species_affinity[target.animal] >= AFFINITY_MAX:
+                    continue
+                if source.animal == "crow" and target.animal not in ("wolf", "bear"):
+                    continue
+                if source.animal == "wolf" and target.animal != "bear":
+                    continue
+                if math.hypot(target.x - source.x, target.y - source.y) > alert_distance:
+                    continue
+                target.receive_alert(source.last_seen_x, source.last_seen_y)
 
     def _dynamic_collisions(self) -> tuple[WorldRect, ...]:
         return tuple(
@@ -2176,15 +2421,23 @@ class Game:
             self.world_entities[map_name] = [
                 WorldEntity.create(definition) for definition in map_data.entities
             ]
+        desired_species = desired_map_species(map_name, self.species_affinity)
         if reloaded or map_name not in self.enemies:
-            self.enemies[map_name] = self._spawn_map_enemies(map_data)
+            self.enemies[map_name] = self._spawn_map_enemies(
+                map_data, desired_species
+            )
+        else:
+            self._sync_map_enemies(map_data, desired_species)
         self.camera_zoom = CAMERA_ZOOM
         self.transition_armed = False
         self._update_camera()
 
     @staticmethod
-    def _spawn_map_enemies(map_data: MapData) -> list[EnemyAI]:
-        kinds = MAP_AI_KINDS.get(map_data.name, ())
+    def _spawn_map_enemies(
+        map_data: MapData, kinds: tuple[str, ...] | None = None
+    ) -> list[EnemyAI]:
+        if kinds is None:
+            kinds = MAP_NATIVE_AI_KINDS.get(map_data.name, ())
         if not kinds:
             return []
         anchor_x, anchor_y = map_data.spawn("player_start")
@@ -2213,6 +2466,29 @@ class Game:
                     break
             result.append(EnemyAI.create(animal, spawn_x, spawn_y))
         return result
+
+    def _sync_map_enemies(
+        self, map_data: MapData, desired_species: tuple[str, ...]
+    ) -> None:
+        existing = self.enemies.setdefault(map_data.name, [])
+        spawned = self._spawn_map_enemies(map_data, desired_species)
+        synchronized: list[EnemyAI] = []
+        used: set[int] = set()
+        for template in spawned:
+            match_index = next(
+                (
+                    index
+                    for index, enemy in enumerate(existing)
+                    if index not in used and enemy.animal == template.animal
+                ),
+                None,
+            )
+            if match_index is None:
+                synchronized.append(template)
+            else:
+                used.add(match_index)
+                synchronized.append(existing[match_index])
+        self.enemies[map_data.name] = synchronized
 
     def _update_camera(self) -> None:
         viewport_width = WINDOW_WIDTH / self.camera_zoom
@@ -2318,13 +2594,19 @@ class Game:
     def _draw_enemy(self, enemy: EnemyAI) -> None:
         size = enemy.display_size * self.camera_zoom
         flight_bob = 0.0
+        dive_offset = 0.0
         if enemy.animal == "crow" and enemy.alive:
             frame_count, _fps, _loops = ANIMAL_ANIMATIONS["crow"][enemy.state]
             phase = (enemy.frame_index % frame_count) / frame_count
             flight_bob = math.sin(phase * math.tau) * 7.0
+            if enemy.state == "attack":
+                attack_progress = enemy.frame_index / max(1, frame_count - 1)
+                dive = math.sin(math.pi * attack_progress)
+                dive_offset = -enemy.display_size * 0.42 * dive
+                size *= 1.0 - 0.28 * dive
         screen_x, screen_y = self.world_to_screen(
             enemy.x,
-            enemy.y + enemy.display_size * 0.42 + flight_bob,
+            enemy.y + enemy.display_size * 0.42 + flight_bob + dive_offset,
         )
         if (
             screen_x + size / 2 < -40
@@ -2345,7 +2627,7 @@ class Game:
             size,
             size,
         )
-        if enemy.alive and enemy.hp < enemy.max_hp:
+        if enemy.alive:
             bar_width = max(54.0, size * 0.55)
             bar_bottom = screen_y + size * 0.42
             p2.draw_rectangle(
@@ -2370,6 +2652,20 @@ class Game:
                 255,
                 True,
             )
+            indicator = ""
+            indicator_color = (255, 238, 145)
+            if enemy.awareness in ("suspicious", "searching"):
+                indicator = "?"
+            elif enemy.awareness == "alerted":
+                indicator = "!"
+                indicator_color = (255, 102, 84)
+            if indicator:
+                self.ui.font.draw(
+                    screen_x - 5,
+                    bar_bottom + 14,
+                    indicator,
+                    indicator_color,
+                )
 
     def _draw_projectile(self, projectile: ThrownProjectile) -> None:
         if projectile.elapsed < 0:

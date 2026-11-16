@@ -44,6 +44,7 @@ def main() -> None:
     ai_hurt_preview = generated / "game_preview_ai_hurt.png"
     ai_attack_preview = generated / "game_preview_ai_attack.png"
     crow_flight_preview = generated / "game_preview_crow_flight.png"
+    alert_network_preview = generated / "game_preview_alert_network.png"
     action_previews = {
         "attack": generated / "game_preview_attack.png",
         "axe": generated / "game_preview_axe.png",
@@ -132,6 +133,7 @@ def main() -> None:
         game.player.state = "idle"
         game.player.direction = "right"
         crow._set_state("walk")
+        crow.awareness = "suspicious"
         crow.direction_row = 2
         crow.frame_index = 2
         game._update_camera()
@@ -183,6 +185,22 @@ def main() -> None:
         game._update_camera()
         game.draw(present=False)
         capture(fruit_cooldown_preview)
+        p2.update_canvas()
+
+        alert_animals = game.enemies["bear_map.json"]
+        alert_offsets = {
+            "bear": (260.0, 40.0),
+            "crow": (-230.0, 150.0),
+            "wolf": (30.0, -30.0),
+        }
+        for animal in alert_animals:
+            offset_x, offset_y = alert_offsets[animal.animal]
+            animal.x = game.player.x + offset_x
+            animal.y = game.player.y + offset_y
+            animal.receive_alert(game.player.x, game.player.y)
+        game.toast = "까마귀 경보 → 늑대·곰 마지막 위치 공유 · ! 추적"
+        game.draw(present=False)
+        capture(alert_network_preview)
         p2.update_canvas()
 
         game._load_map("wolf_map.json", "player_start")
@@ -240,6 +258,7 @@ def main() -> None:
     print(ai_hurt_preview)
     print(ai_attack_preview)
     print(crow_flight_preview)
+    print(alert_network_preview)
     for destination in action_previews.values():
         print(destination)
     for destination in direction_previews.values():

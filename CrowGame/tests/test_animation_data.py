@@ -15,6 +15,8 @@ from CrowGame.main import (  # noqa: E402
     ACTION_BODY_FRAMES,
     ACTION_STATES,
     ATTACK_FRAMES,
+    CUSTOM_SIDE_BODY_FRAMES,
+    CUSTOM_SIDE_TOOL_PATHS,
     FRAME_HEIGHT,
     FRAME_WIDTH,
     HURT_FRAMES,
@@ -55,7 +57,7 @@ class AnimationDataTests(unittest.TestCase):
                 self.assertEqual(VERTICAL_TOOL_FRAMES[direction], frames)
                 self.assertTrue(all(frame.top == expected_row for frame in frames))
 
-    def test_horizontal_tool_actions_use_side_facing_swing_frames(self) -> None:
+    def test_horizontal_actions_use_custom_clean_side_bodies(self) -> None:
         player = Player(sprite_sheet=None)
         for state in ("attack", "axe", "mine", "fish"):
             for direction in ("left", "right"):
@@ -69,8 +71,41 @@ class AnimationDataTests(unittest.TestCase):
                     ACTION_BODY_FRAMES[state][direction],
                     player._frames_for_state(),
                 )
-        self.assertTrue(all(frame.flip == "h" for frame in SIDE_ACTION_FRAMES["axe"]["left"]))
-        self.assertTrue(all(frame.flip == "" for frame in SIDE_ACTION_FRAMES["axe"]["right"]))
+                self.assertEqual(
+                    CUSTOM_SIDE_BODY_FRAMES[direction],
+                    player._frames_for_state(),
+                )
+                self.assertTrue(
+                    all(frame.top == 0 for frame in player._frames_for_state())
+                )
+
+    def test_custom_side_actions_never_reference_original_action_rows(self) -> None:
+        original_action_rows = {240, 288, 336, 432}
+        for state in ("attack", "axe", "mine", "fish"):
+            for direction in ("left", "right"):
+                frames = SIDE_ACTION_FRAMES[state][direction]
+                self.assertTrue(
+                    all(frame.top not in original_action_rows for frame in frames)
+                )
+
+    def test_custom_side_action_has_four_authored_body_beats(self) -> None:
+        player = Player(sprite_sheet=None)
+        player.state = "axe"
+        player.direction = "right"
+        transforms = []
+        for frame_index in range(4):
+            player.frame_index = frame_index
+            transforms.append(player._state_transform())
+        self.assertEqual(4, len(set(transforms)))
+
+    def test_each_custom_side_tool_has_four_authored_arc_positions(self) -> None:
+        self.assertEqual(
+            {"attack", "axe", "mine", "fish"}, set(CUSTOM_SIDE_TOOL_PATHS)
+        )
+        for path, size in CUSTOM_SIDE_TOOL_PATHS.values():
+            self.assertEqual(4, len(path))
+            self.assertEqual(4, len(set(path)))
+            self.assertGreater(size, 0)
 
     def test_releasing_horizontal_move_keeps_last_facing_direction(self) -> None:
         cases = (("right", p2.SDLK_d), ("left", p2.SDLK_a))

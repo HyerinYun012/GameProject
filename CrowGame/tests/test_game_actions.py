@@ -18,9 +18,13 @@ from CrowGame.game_model import (  # noqa: E402
     SlotRef,
 )
 from CrowGame.main import (  # noqa: E402
+    AI_SENSES,
     ANIMAL_ANIMATIONS,
+    ANIMAL_STATS,
     MAX_HP,
     MAX_SP,
+    PROJECTILE_DAMAGE,
+    WORLD_TILE_SIZE,
     DragState,
     EnemyAI,
     Game,
@@ -30,6 +34,7 @@ from CrowGame.main import (  # noqa: E402
     WorldDrop,
     WorldEntity,
     affinity_relationship,
+    desired_map_species,
 )
 from CrowGame.map_system import FIRST_MAP, load_map_data  # noqa: E402
 
@@ -299,6 +304,18 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual(85.0, game.player.hp)
         self.assertEqual(2, game.model.tool_slot.count)
 
+    def test_e_key_does_not_trigger_unarmed_attack_with_empty_tool_bar(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        enemy = EnemyAI.create("wolf", game.player.x + 50.0, game.player.y)
+        game.enemies[FIRST_MAP] = [enemy]
+
+        game._key_down(SimpleNamespace(key=p2.SDLK_e, repeat=0))
+
+        self.assertEqual(enemy.max_hp, enemy.hp)
+        self.assertEqual("idle", game.player.state)
+
     def test_mouse_drag_from_hotbar_moves_the_same_inventory_slot(self) -> None:
         game = make_game()
         game.model.slots[0] = ItemStack("wooden_axe")
@@ -505,7 +522,7 @@ class GameActionTests(unittest.TestCase):
             if not game.projectiles[FIRST_MAP]:
                 break
 
-        self.assertEqual(35, enemy.hp)
+        self.assertEqual(55, enemy.hp)
         self.assertEqual("hurt", enemy.state)
         self.assertEqual([], game.projectiles[FIRST_MAP])
         self.assertEqual("wooden_spear", game.world_drops[FIRST_MAP][0].stack.item_id)
@@ -581,15 +598,60 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual("near_friendly", affinity_relationship(99))
         self.assertEqual("reconciled", affinity_relationship(100))
 
-    def test_near_friendly_ai_attacks_only_at_very_close_range(self) -> None:
+    def test_unreconciled_species_follow_into_later_maps(self) -> None:
+        affinity = {"crow": 0, "wolf": 0, "bear": 0}
+        self.assertEqual(
+            ("crow",), desired_map_species("crow_map.json", affinity)
+        )
+        self.assertEqual(
+            ("wolf", "crow"), desired_map_species("wolf_map.json", affinity)
+        )
+        self.assertEqual(
+            ("bear", "crow", "wolf"),
+            desired_map_species("bear_map.json", affinity),
+        )
+
+        affinity["crow"] = 100
+        self.assertEqual(
+            ("wolf",), desired_map_species("wolf_map.json", affinity)
+        )
+        self.assertEqual(
+            ("bear", "wolf"), desired_map_species("bear_map.json", affinity)
+        )
+
+        affinity["wolf"] = 100
+        self.assertEqual(
+            ("bear",), desired_map_species("bear_map.json", affinity)
+        )
+
+    def test_map_enemy_sync_adds_and_removes_following_species(self) -> None:
+        game = make_game()
+        wolf_map = load_map_data("wolf_map.json")
+        native_wolf = EnemyAI.create("wolf", 500.0, 500.0)
+        following_crow = EnemyAI.create("crow", 600.0, 500.0)
+        game.enemies[wolf_map.name] = [native_wolf, following_crow]
+
+        game._sync_map_enemies(wolf_map, ("wolf",))
+        self.assertEqual(["wolf"], [enemy.animal for enemy in game.enemies[wolf_map.name]])
+        self.assertIs(native_wolf, game.enemies[wolf_map.name][0])
+
+        game._sync_map_enemies(wolf_map, ("wolf", "crow"))
+        self.assertEqual(
+            ["wolf", "crow"],
+            [enemy.animal for enemy in game.enemies[wolf_map.name]],
+        )
+
+    def test_nonmax_affinity_can_detect_but_reconciled_ai_stays_peaceful(self) -> None:
         game = make_game()
         game.player.x = 500.0
         game.player.y = 500.0
         close_enemy = EnemyAI.create("crow", 535.0, 500.0)
         peaceful_enemy = EnemyAI.create("crow", 535.0, 500.0)
+        close_enemy.direction_row = 6
+        peaceful_enemy.direction_row = 6
 
         damage = 0.0
-        for _ in range(20):
+        for _ in range(30):
             damage += close_enemy.update(
                 0.1, game.map_data, game.player, 99, game.camera_zoom
             )
@@ -603,21 +665,126 @@ class GameActionTests(unittest.TestCase):
         self.assertGreater(damage, 0.0)
         self.assertEqual(0.0, peaceful_damage)
 
-    def test_hostile_detection_range_is_longer_than_wary_range(self) -> None:
+    def test_detection_uses_distance_angle_and_confirmation_time(self) -> None:
         game = make_game()
-        game.player.x = 100.0
+        game.player.x = 500.0 + 5.0 * WORLD_TILE_SIZE
         game.player.y = 500.0
+        wolf = EnemyAI.create("wolf", 500.0, 500.0)
+        wolf.direction_row = 2
+
+        wolf.update(0.3, game.map_data, game.player, 20, 1.0)
+        self.assertEqual("suspicious", wolf.awareness)
+        wolf.update(0.21, game.map_data, game.player, 20, 1.0)
+        self.assertEqual("alerted", wolf.awareness)
+
+        behind = EnemyAI.create("wolf", 500.0, 500.0)
+        behind.direction_row = 6
+        behind.update(1.0, game.map_data, game.player, 20, 1.0)
+        self.assertNotEqual("alerted", behind.awareness)
+
+    def test_leaving_view_before_confirmation_cancels_suspicion(self) -> None:
+        game = make_game()
+        crow = EnemyAI.create("crow", 500.0, 500.0)
+        crow.direction_row = 2
+        game.player.x = 700.0
+        game.player.y = 500.0
+
+        crow.update(0.4, game.map_data, game.player, 20, 1.0)
+        self.assertEqual("suspicious", crow.awareness)
+        game.player.x = -1000.0
+        crow.update(0.21, game.map_data, game.player, 20, 1.0)
+        self.assertEqual("unaware", crow.awareness)
+
+    def test_lost_target_searches_around_last_known_position(self) -> None:
         open_map = SimpleNamespace(
             resolve_movement=lambda x, y, dx, dy: (x + dx, y + dy)
         )
-        hostile_enemy = EnemyAI.create("wolf", 500.0, 500.0)
-        wary_enemy = EnemyAI.create("wolf", 500.0, 500.0)
+        game = make_game()
+        game.player.x = 3000.0
+        game.player.y = 3000.0
+        wolf = EnemyAI.create("wolf", 500.0, 500.0)
+        wolf.receive_alert(500.0, 500.0)
 
-        hostile_enemy.update(0.25, open_map, game.player, 39, 1.0)
-        wary_enemy.update(0.25, open_map, game.player, 40, 1.0)
+        wolf.update(0.1, open_map, game.player, 20, 1.0)
+        self.assertEqual("searching", wolf.awareness)
+        wolf.update(0.1, open_map, game.player, 20, 1.0)
 
-        self.assertLess(hostile_enemy.x, 500.0)
-        self.assertGreater(wary_enemy.x, 500.0)
+        self.assertEqual("searching", wolf.awareness)
+        self.assertGreater(math.hypot(wolf.x - 500.0, wolf.y - 500.0), 0.0)
+        self.assertEqual(3.0, AI_SENSES["wolf"]["search_tiles"])
+
+    def test_crow_alert_shares_last_position_only_inside_ten_tiles(self) -> None:
+        game = make_game()
+        game.map_data = SimpleNamespace(
+            name=FIRST_MAP,
+            resolve_movement=lambda x, y, dx, dy: (x + dx, y + dy),
+        )
+        game.player.x = 600.0
+        game.player.y = 500.0
+        crow = EnemyAI.create("crow", 500.0, 500.0)
+        nearby_wolf = EnemyAI.create("wolf", 500.0, 900.0)
+        distant_wolf = EnemyAI.create(
+            "wolf", 500.0 + 12.0 * WORLD_TILE_SIZE, 500.0
+        )
+        crow.direction_row = 2
+        nearby_wolf.direction_row = 4
+        distant_wolf.direction_row = 2
+        game.enemies[game.map_data.name] = [crow, nearby_wolf, distant_wolf]
+
+        game._update_enemies(0.4)
+        game._update_enemies(0.41)
+
+        self.assertEqual("alerted", crow.awareness)
+        self.assertEqual("alerted", nearby_wolf.awareness)
+        self.assertEqual(600.0, nearby_wolf.last_seen_x)
+        self.assertNotEqual("alerted", distant_wolf.awareness)
+
+    def test_reconciled_species_ignores_crow_alert(self) -> None:
+        game = make_game()
+        game.map_data = SimpleNamespace(
+            name=FIRST_MAP,
+            resolve_movement=lambda x, y, dx, dy: (x + dx, y + dy),
+        )
+        game.species_affinity["wolf"] = 100
+        game.player.x = 600.0
+        game.player.y = 500.0
+        crow = EnemyAI.create("crow", 500.0, 500.0)
+        wolf = EnemyAI.create("wolf", 500.0, 800.0)
+        crow.direction_row = 2
+        wolf.direction_row = 4
+        game.enemies[FIRST_MAP] = [crow, wolf]
+
+        game._update_enemies(0.4)
+        game._update_enemies(0.41)
+
+        self.assertEqual("alerted", crow.awareness)
+        self.assertEqual("unaware", wolf.awareness)
+
+    def test_bear_stays_at_habitat_until_detection_or_alert(self) -> None:
+        game = make_game()
+        game.player.x = 3000.0
+        game.player.y = 3000.0
+        bear = EnemyAI.create("bear", 500.0, 500.0)
+
+        bear.update(2.0, game.map_data, game.player, 0, 1.0)
+
+        self.assertEqual((500.0, 500.0), (bear.x, bear.y))
+        self.assertEqual("idle", bear.state)
+
+    def test_species_attack_power_and_speed_match_design(self) -> None:
+        self.assertEqual(35, ANIMAL_STATS["crow"]["hp"])
+        self.assertEqual(70, ANIMAL_STATS["wolf"]["hp"])
+        self.assertEqual(120, ANIMAL_STATS["bear"]["hp"])
+        self.assertEqual(20.0, ANIMAL_STATS["crow"]["attack_damage"])
+        self.assertEqual(40.0, ANIMAL_STATS["wolf"]["attack_damage"])
+        self.assertEqual(55.0, ANIMAL_STATS["bear"]["attack_damage"])
+        self.assertEqual(250.0, ANIMAL_STATS["crow"]["speed"])
+        self.assertEqual(200.0, ANIMAL_STATS["wolf"]["speed"])
+        self.assertEqual(160.0, ANIMAL_STATS["bear"]["speed"])
+        self.assertLess(Player.WALK_SPEED, ANIMAL_STATS["wolf"]["speed"])
+        self.assertLess(ANIMAL_STATS["wolf"]["speed"], Player.RUN_SPEED)
+        self.assertEqual(7.0, AI_SENSES["crow"]["vision_tiles"])
+        self.assertEqual(6.0, AI_SENSES["wolf"]["vision_tiles"])
 
     def test_melee_hit_damages_ai_and_reduces_species_affinity(self) -> None:
         game = make_game()
@@ -631,10 +798,40 @@ class GameActionTests(unittest.TestCase):
 
         game._use_tool()
 
-        self.assertEqual(45, enemy.hp)
+        self.assertEqual(60, enemy.hp)
         self.assertEqual("hurt", enemy.state)
         self.assertEqual(45, game.species_affinity["wolf"])
         self.assertEqual(36, game.model.tool_slot.durability)
+
+    def test_empty_tool_bar_uses_five_damage_unarmed_attack(self) -> None:
+        game = make_game()
+        game.player.x = 300.0
+        game.player.y = 300.0
+        game.player.direction = "right"
+        enemy = EnemyAI.create("wolf", 400.0, 300.0)
+        game.enemies[FIRST_MAP] = [enemy]
+        game.species_affinity["wolf"] = 50
+
+        game._use_tool()
+
+        self.assertEqual(65, enemy.hp)
+        self.assertEqual("hurt", enemy.state)
+        self.assertIn("맨손 명중", game.toast)
+
+    def test_spear_damage_and_throw_range_match_design(self) -> None:
+        self.assertEqual(15, PROJECTILE_DAMAGE["wooden_spear"])
+        self.assertEqual(30, PROJECTILE_DAMAGE["stone_spear"])
+        game = make_game()
+        game.player.x = 1000.0
+        game.player.y = 1000.0
+        game.camera_x = game.player.x
+        game.camera_y = game.player.y
+        target_x, target_y = game._throw_target_world(100000.0, 360.0)
+        distance = math.hypot(
+            target_x - game.player.x,
+            target_y - (game.player.y + 240.0 * 0.34),
+        )
+        self.assertLessEqual(distance, 5.0 * WORLD_TILE_SIZE + 0.001)
 
     def test_sword_durability_does_not_drop_when_attack_misses(self) -> None:
         game = make_game()

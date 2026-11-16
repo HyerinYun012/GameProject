@@ -106,9 +106,9 @@ MAP_DEFINITIONS: dict[str, MapDefinition] = {
     "ruined_town_demo.json": MapDefinition(
         "ruined_town_demo.json", "ruined_town_demo.png", "폐허 마을"
     ),
-    "crow_map.json": MapDefinition("crow_map.json", "map_background.png", "까마귀 숲"),
-    "wolf_map.json": MapDefinition("wolf_map.json", "wolf_background.png", "늑대 숲"),
-    "bear_map.json": MapDefinition("bear_map.json", "bear_background.png", "곰 숲"),
+    "crow_map.json": MapDefinition("crow_map.json", "map_background.png", "까마귀의 숲"),
+    "wolf_map.json": MapDefinition("wolf_map.json", "wolf_background.png", "늑대 협곡"),
+    "bear_map.json": MapDefinition("bear_map.json", "bear_background.png", "곰의 산"),
 }
 
 

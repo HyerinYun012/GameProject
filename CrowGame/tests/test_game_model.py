@@ -29,6 +29,10 @@ class InventoryModelTests(unittest.TestCase):
         self.assertEqual(5, ITEMS["fruit"].heal_amount)
         self.assertTrue((PROJECT_DIR / "assets" / "apple.png").exists())
 
+    def test_gathered_materials_are_limited_to_ten_per_slot(self) -> None:
+        for item_id in ("fruit", "wood", "stone", "fiber"):
+            self.assertEqual(10, ITEMS[item_id].max_stack)
+
     def test_definition_and_demo_sizes(self) -> None:
         self.assertEqual(17, len(ITEMS))
         self.assertEqual(10, len(TOOL_ITEM_IDS))
@@ -142,8 +146,8 @@ class InventoryModelTests(unittest.TestCase):
 
     def test_add_item_stacks_then_uses_first_empty_slot(self) -> None:
         model = InventoryModel()
-        self.assertEqual(0, model.add_item("wood", 100))
-        self.assertEqual(ItemStack("wood", 99), model.slots[0])
+        self.assertEqual(0, model.add_item("wood", 11))
+        self.assertEqual(ItemStack("wood", 10), model.slots[0])
         self.assertEqual(ItemStack("wood", 1), model.slots[1])
         self.assertEqual(0, model.add_item("wood", 5))
         self.assertEqual(6, model.slots[1].count)
@@ -204,12 +208,12 @@ class InventoryModelTests(unittest.TestCase):
 
     def test_merge_never_loses_overflow(self) -> None:
         model = InventoryModel()
-        model.slots[0] = ItemStack("stone", 98)
+        model.slots[0] = ItemStack("stone", 9)
         model.slots[1] = ItemStack("stone", 4)
         self.assertTrue(model.try_move(SlotRef.inventory(1), SlotRef.inventory(0)))
-        self.assertEqual(99, model.slots[0].count)
+        self.assertEqual(10, model.slots[0].count)
         self.assertEqual(3, model.slots[1].count)
-        self.assertEqual(102, model.slots[0].count + model.slots[1].count)
+        self.assertEqual(13, model.slots[0].count + model.slots[1].count)
 
     def test_invalid_indices_are_rejected(self) -> None:
         model = InventoryModel()
