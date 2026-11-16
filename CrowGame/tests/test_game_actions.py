@@ -21,9 +21,11 @@ from CrowGame.main import (  # noqa: E402
     MAX_HP,
     MAX_SP,
     DragState,
+    EnemyAI,
     Game,
     GameUI,
     Player,
+    PlacedUtility,
     WorldDrop,
     WorldEntity,
 )
@@ -50,8 +52,15 @@ def make_game() -> Game:
     game.toast_timer = 0.0
     game.camera_zoom = 1.0
     game.map_data = load_map_data(FIRST_MAP)
+    game.camera_x = game.player.x
+    game.camera_y = game.player.y
+    game.mouse_screen_x = 640.0
+    game.mouse_screen_y = 360.0
     game.world_entities = {FIRST_MAP: []}
     game.world_drops = {FIRST_MAP: []}
+    game.placed_utilities = {FIRST_MAP: []}
+    game.enemies = {FIRST_MAP: []}
+    game.projectiles = {FIRST_MAP: []}
     return game
 
 
@@ -60,6 +69,7 @@ def place_near_entity(game: Game, map_name: str, entity_type: str) -> WorldEntit
     entities = [WorldEntity.create(definition) for definition in game.map_data.entities]
     game.world_entities = {map_name: entities}
     game.world_drops = {map_name: []}
+    game.placed_utilities = {map_name: []}
     entity = next(item for item in entities if item.definition.entity_type == entity_type)
     rect = entity.definition.rect
     game.player.x = rect.left + rect.width / 2
@@ -68,6 +78,35 @@ def place_near_entity(game: Game, map_name: str, entity_type: str) -> WorldEntit
 
 
 class GameActionTests(unittest.TestCase):
+    def test_campfire_and_bedding_install_and_return_to_inventory(self) -> None:
+        for item_id in ("campfire", "travel_bedding"):
+            game = make_game()
+            game.model.tool_slot = ItemStack(item_id)
+            game._utility_placement_position = lambda _item_id: (500.0, 400.0)
+
+            self.assertTrue(game._interact_world())
+
+            self.assertIsNone(game.model.tool_slot)
+            self.assertEqual(
+                [PlacedUtility(item_id, 500.0, 400.0)],
+                game.placed_utilities[FIRST_MAP],
+            )
+
+            game.player.x = 500.0
+            game.player.y = 400.0
+            self.assertTrue(game._interact_world())
+            self.assertEqual(1, game.model.item_count(item_id))
+            self.assertEqual([], game.placed_utilities[FIRST_MAP])
+
+    def test_installables_find_open_space_near_the_town_spawn(self) -> None:
+        game = make_game()
+        game.camera_zoom = 0.5
+        game.player.x, game.player.y = game.map_data.spawn("player_start")
+        game.player.direction = "down"
+
+        for item_id in ("campfire", "travel_bedding"):
+            self.assertIsNotNone(game._utility_placement_position(item_id))
+
     def test_crafting_ui_has_thirteen_clickable_cards(self) -> None:
         ui = GameUI.__new__(GameUI)
         cards = ui.crafting_cards()
@@ -197,16 +236,16 @@ class GameActionTests(unittest.TestCase):
         self.assertIsNone(game.model.hotbar[0])
         self.assertEqual("wooden_axe", game.model.tool_slot.item_id)
 
-    def test_invalid_drag_to_tool_is_rejected_without_data_loss(self) -> None:
+    def test_material_drag_to_tool_slot_is_accepted(self) -> None:
         game = make_game()
         stack = ItemStack("wood", 5)
         game.model.slots[0] = stack
         game.ui = FixedTargetUI(SlotRef.tool())
         game.drag = DragState(SlotRef.inventory(0), "wood", 0, 0)
         game._finish_drag(10, 10)
-        self.assertIs(stack, game.model.slots[0])
-        self.assertIsNone(game.model.tool_slot)
-        self.assertTrue(game.toast_error)
+        self.assertIsNone(game.model.slots[0])
+        self.assertIs(stack, game.model.tool_slot)
+        self.assertFalse(game.toast_error)
 
     def test_dragging_outside_slots_creates_a_visible_world_drop(self) -> None:
         game = make_game()
@@ -344,8 +383,79 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual("apple.png", game.model.slots[0].definition.icon_filename)
         self.assertEqual("사과", game.model.slots[0].definition.label)
         self.assertEqual(3, game.model.slots[0].count)
+        self.assertEqual("fruit_tree_unripe.png", fruit_tree.sprite_path.name)
+        self.assertTrue(fruit_tree.sprite_path.exists())
         game._harvest_resource(fruit_tree)
         self.assertEqual(3, game.model.slots[0].count)
+
+        game._update_entity_timers(30.0)
+
+        self.assertEqual(0.0, fruit_tree.cooldown_remaining)
+        self.assertFalse(fruit_tree.completed)
+        self.assertEqual(
+            fruit_tree.definition.sprite_path,
+            fruit_tree.sprite_path,
+        )
+
+    def test_mouse_aim_sets_throw_direction(self) -> None:
+        game = make_game()
+        game.model.tool_slot = ItemStack("stone", 2)
+
+        game._aim_at_screen(1000.0, 360.0)
+        self.assertEqual("right", game.player.direction)
+        game._aim_at_screen(640.0, 650.0)
+        self.assertEqual("up", game.player.direction)
+
+    def test_thrown_spear_flies_into_ai_and_causes_hurt(self) -> None:
+        game = make_game()
+        game.player.x = 300.0
+        game.player.y = 300.0
+        game.camera_x = game.player.x
+        game.camera_y = game.player.y
+        enemy = EnemyAI.create("wolf", 560.0, 300.0)
+        game.enemies[FIRST_MAP] = [enemy]
+        game.model.tool_slot = ItemStack("wooden_spear")
+        target_screen = game.world_to_screen(*enemy.hit_center)
+
+        self.assertTrue(game._throw_equipped_at_screen(*target_screen))
+        self.assertIsNone(game.model.tool_slot)
+        self.assertEqual("attack", game.player.state)
+        self.assertEqual(1, len(game.projectiles[FIRST_MAP]))
+
+        for _ in range(12):
+            game._update_projectiles(0.05)
+            if not game.projectiles[FIRST_MAP]:
+                break
+
+        self.assertEqual(35, enemy.hp)
+        self.assertEqual("hurt", enemy.state)
+        self.assertEqual([], game.projectiles[FIRST_MAP])
+        self.assertEqual("wooden_spear", game.world_drops[FIRST_MAP][0].stack.item_id)
+        self.assertFalse(game.world_drops[FIRST_MAP][0].pickup_enabled)
+
+    def test_throwing_one_stone_keeps_the_rest_equipped(self) -> None:
+        game = make_game()
+        game.model.tool_slot = ItemStack("stone", 3)
+
+        self.assertTrue(game._throw_equipped_at_screen(1000.0, 360.0))
+
+        self.assertEqual(2, game.model.tool_slot.count)
+        self.assertEqual("stone", game.projectiles[FIRST_MAP][0].item_id)
+
+    def test_projectile_that_misses_ai_does_not_deal_damage(self) -> None:
+        game = make_game()
+        enemy = EnemyAI.create("wolf", 560.0, 600.0)
+        game.enemies[FIRST_MAP] = [enemy]
+        game.model.tool_slot = ItemStack("wooden_spear")
+
+        self.assertTrue(game._throw_equipped_at_screen(1000.0, 360.0))
+        for _ in range(20):
+            game._update_projectiles(0.05)
+            if not game.projectiles[FIRST_MAP]:
+                break
+
+        self.assertEqual(enemy.max_hp, enemy.hp)
+        self.assertEqual("idle", enemy.state)
 
     def test_event_with_after_sprite_changes_instead_of_disappearing(self) -> None:
         game = make_game()

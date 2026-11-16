@@ -39,6 +39,9 @@ def main() -> None:
     world_resources_preview = generated / "game_preview_world_resources.png"
     world_event_preview = generated / "game_preview_world_event.png"
     fruit_cooldown_preview = generated / "game_preview_fruit_cooldown.png"
+    projectile_flight_preview = generated / "game_preview_projectile_flight.png"
+    projectile_aim_preview = generated / "game_preview_projectile_aim.png"
+    ai_hurt_preview = generated / "game_preview_ai_hurt.png"
     action_previews = {
         "axe": generated / "game_preview_axe.png",
         "mine": generated / "game_preview_mine.png",
@@ -143,6 +146,35 @@ def main() -> None:
         game.draw(present=False)
         capture(fruit_cooldown_preview)
         p2.update_canvas()
+
+        game._load_map("wolf_map.json", "player_start")
+        wolf = game.enemies["wolf_map.json"][0]
+        game.player.x = wolf.x - 520
+        game.player.y = wolf.y
+        game.player.state = "idle"
+        game.player.dead = False
+        game.model.tool_slot = ItemStack("stone_spear")
+        game._update_camera()
+        target_screen = game.world_to_screen(*wolf.hit_center)
+        game._aim_at_screen(*target_screen)
+        game.toast = "마우스 이동: 조준 · 좌클릭: 창/돌 던지기"
+        game.draw(present=False)
+        capture(projectile_aim_preview)
+        p2.update_canvas()
+        game._throw_equipped_at_screen(*target_screen)
+        game._update_projectiles(0.20)
+        game.draw(present=False)
+        capture(projectile_flight_preview)
+        p2.update_canvas()
+
+        for _ in range(8):
+            game._update_projectiles(0.05)
+            if not game.projectiles["wolf_map.json"]:
+                break
+        wolf.update(0.10, game.map_data)
+        game.draw(present=False)
+        capture(ai_hurt_preview)
+        p2.update_canvas()
     finally:
         p2.close_canvas()
     print(inventory_preview)
@@ -150,6 +182,9 @@ def main() -> None:
     print(world_resources_preview)
     print(world_event_preview)
     print(fruit_cooldown_preview)
+    print(projectile_flight_preview)
+    print(projectile_aim_preview)
+    print(ai_hurt_preview)
     for destination in action_previews.values():
         print(destination)
     for destination in direction_previews.values():

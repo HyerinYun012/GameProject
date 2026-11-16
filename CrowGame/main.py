@@ -71,7 +71,28 @@ FRUIT_COOLDOWN_SECONDS = 30.0
 THROWN_DROP_MIN_SCREEN_DISTANCE = 80.0
 THROWN_DROP_MAX_SCREEN_DISTANCE = 130.0
 THROWN_DROP_SCREEN_SIZE = 76.0
+PROJECTILE_MAX_SCREEN_RANGE = 680.0
+PROJECTILE_SCREEN_SPEED = 760.0
+PROJECTILE_ARC_SCREEN_HEIGHT = 92.0
+PROJECTILE_RELEASE_DELAY = 0.10
+THROWABLE_ITEM_IDS = frozenset({"wooden_spear", "stone_spear", "stone"})
+PROJECTILE_DAMAGE = {
+    "wooden_spear": 35,
+    "stone_spear": 50,
+    "stone": 18,
+}
+PLACED_UTILITY_SCREEN_DISTANCE = 130.0
+UTILITY_PLACEMENT_SCREEN_DISTANCE = 105.0
+INSTALLABLE_ITEM_IDS = frozenset({"travel_bedding", "campfire"})
+PLACED_UTILITY_WORLD_SIZES = {
+    "travel_bedding": (240.0, 170.0),
+    "campfire": (190.0, 190.0),
+}
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
+FRUIT_TREE_UNRIPE_SPRITE = ASSET_DIR / "fruit_tree_unripe.png"
+ANIMAL_ASSET_ROOT = (
+    Path(__file__).resolve().parent.parent / "Assets" / "Sprites" / "Animals"
+)
 GENERATED_ICON_DIR = Path(__file__).resolve().parent / "generated" / "icons"
 CHARACTER_SHEET = (
     ASSET_DIR
@@ -94,6 +115,60 @@ STATE_FPS = {
     "fish": 6.0,
 }
 ACTION_STATES = frozenset({"hurt", "death", "attack", "axe", "mine", "fish"})
+
+ANIMAL_ANIMATIONS: dict[str, tuple[int, float, bool]] = {
+    "idle": (4, 4.0, True),
+    "walk": (6, 8.0, True),
+    "attack": (6, 10.0, False),
+    "hurt": (3, 12.0, False),
+    "death": (6, 8.0, False),
+}
+ANIMAL_STATS = {
+    "crow": {
+        "hp": 35, "size": 210.0, "speed": 100.0, "hit_radius": 68.0,
+        "attack_range": 68.0, "attack_damage": 8.0,
+    },
+    "wolf": {
+        "hp": 70, "size": 285.0, "speed": 125.0, "hit_radius": 88.0,
+        "attack_range": 82.0, "attack_damage": 14.0,
+    },
+    "bear": {
+        "hp": 120, "size": 375.0, "speed": 90.0, "hit_radius": 120.0,
+        "attack_range": 105.0, "attack_damage": 20.0,
+    },
+}
+MAP_AI_KINDS: dict[str, tuple[str, ...]] = {
+    "crow_map.json": ("crow",),
+    "wolf_map.json": ("wolf",),
+    "bear_map.json": ("bear",),
+}
+MAP_SPECIES = {
+    "crow_map.json": "crow",
+    "wolf_map.json": "wolf",
+    "bear_map.json": "bear",
+}
+SPECIES_LABELS = {"crow": "까마귀", "wolf": "늑대", "bear": "곰"}
+AFFINITY_MAX = 100
+AFFINITY_LOSS_PER_HIT = 5
+AI_DETECTION_SCREEN_RANGES = {
+    "hostile": 520.0,
+    "wary": 230.0,
+    "near_friendly": 88.0,
+    "reconciled": 0.0,
+}
+AI_PROVOKED_SCREEN_RANGE = 620.0
+AI_ATTACK_COOLDOWN = 1.35
+AI_PROVOKED_SECONDS = 6.0
+
+
+def affinity_relationship(value: int) -> str:
+    if value >= 100:
+        return "reconciled"
+    if value >= 80:
+        return "near_friendly"
+    if value >= 40:
+        return "wary"
+    return "hostile"
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +225,214 @@ class WorldDrop:
 
 
 @dataclass(slots=True)
+class PlacedUtility:
+    item_id: str
+    x: float
+    y: float
+
+
+@dataclass(slots=True)
+class ThrownProjectile:
+    item_id: str
+    start_x: float
+    start_y: float
+    target_x: float
+    target_y: float
+    duration: float
+    arc_height: float
+    elapsed: float = -PROJECTILE_RELEASE_DELAY
+
+    @property
+    def progress(self) -> float:
+        if self.duration <= 0:
+            return 1.0
+        return min(max(self.elapsed / self.duration, 0.0), 1.0)
+
+    @property
+    def position(self) -> tuple[float, float]:
+        progress = self.progress
+        return (
+            self.start_x + (self.target_x - self.start_x) * progress,
+            self.start_y
+            + (self.target_y - self.start_y) * progress
+            + math.sin(math.pi * progress) * self.arc_height,
+        )
+
+    @property
+    def landed(self) -> bool:
+        return self.elapsed >= self.duration
+
+    def advance(self, dt: float) -> tuple[tuple[float, float], tuple[float, float]]:
+        previous = self.position
+        self.elapsed += dt
+        return previous, self.position
+
+
+@dataclass(slots=True)
+class EnemyAI:
+    animal: str
+    x: float
+    y: float
+    home_x: float
+    home_y: float
+    hp: int
+    max_hp: int
+    state: str = "idle"
+    direction_row: int = 0
+    frame_index: int = 0
+    frame_clock: float = 0.0
+    patrol_clock: float = 0.0
+    attack_cooldown: float = 0.0
+    attack_pending: bool = False
+    provoked_timer: float = 0.0
+
+    @classmethod
+    def create(cls, animal: str, x: float, y: float) -> "EnemyAI":
+        max_hp = int(ANIMAL_STATS[animal]["hp"])
+        return cls(animal, x, y, x, y, max_hp, max_hp)
+
+    @property
+    def alive(self) -> bool:
+        return self.hp > 0
+
+    @property
+    def display_size(self) -> float:
+        return float(ANIMAL_STATS[self.animal]["size"])
+
+    @property
+    def hit_center(self) -> tuple[float, float]:
+        return self.x, self.y + self.display_size * 0.42
+
+    @property
+    def hit_radius(self) -> float:
+        return float(ANIMAL_STATS[self.animal]["hit_radius"])
+
+    def _set_state(self, state: str) -> None:
+        if self.state == state:
+            return
+        self.state = state
+        self.frame_index = 0
+        self.frame_clock = 0.0
+
+    def take_damage(self, amount: int) -> int:
+        if amount <= 0 or not self.alive:
+            return 0
+        previous = self.hp
+        self.hp = max(0, self.hp - amount)
+        self.provoked_timer = AI_PROVOKED_SECONDS
+        self.attack_pending = False
+        self._set_state("death" if self.hp == 0 else "hurt")
+        return previous - self.hp
+
+    def _face_vector(self, dx: float, dy: float) -> None:
+        if math.hypot(dx, dy) <= 0.01:
+            return
+        angle = math.atan2(dy, dx)
+        sector = round(angle / (math.pi / 4.0)) % 8
+        self.direction_row = (sector + 2) % 8
+
+    def _move_toward(
+        self, target_x: float, target_y: float, dt: float, map_data: MapData
+    ) -> None:
+        dx = target_x - self.x
+        dy = target_y - self.y
+        distance = math.hypot(dx, dy)
+        if distance <= 12.0:
+            self._set_state("idle")
+            return
+        speed = float(ANIMAL_STATS[self.animal]["speed"])
+        move_x = dx / distance * speed * dt
+        move_y = dy / distance * speed * dt
+        next_x, next_y = map_data.resolve_movement(
+            self.x, self.y, move_x, move_y
+        )
+        moved_x = next_x - self.x
+        moved_y = next_y - self.y
+        self.x, self.y = next_x, next_y
+        if math.hypot(moved_x, moved_y) > 0.01:
+            self._face_vector(moved_x, moved_y)
+            self._set_state("walk")
+        else:
+            self._set_state("idle")
+
+    def update(
+        self,
+        dt: float,
+        map_data: MapData,
+        player: Player | None = None,
+        affinity: int = AFFINITY_MAX,
+        camera_zoom: float = 1.0,
+    ) -> float:
+        self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
+        self.provoked_timer = max(0.0, self.provoked_timer - dt)
+
+        state_before = self.state
+        if state_before in ("hurt", "death", "attack"):
+            self._advance_animation(dt)
+            if (
+                state_before == "attack"
+                and self.attack_pending
+                and (self.frame_index >= 2 or self.state != "attack")
+            ):
+                self.attack_pending = False
+                return float(ANIMAL_STATS[self.animal]["attack_damage"])
+            return 0.0
+
+        should_engage = False
+        distance_screen = math.inf
+        if player is not None and not player.dead:
+            dx = player.x - self.x
+            dy = player.y - self.y
+            distance_screen = math.hypot(dx, dy) * camera_zoom
+            relationship = affinity_relationship(affinity)
+            detection_range = AI_DETECTION_SCREEN_RANGES[relationship]
+            if self.provoked_timer > 0 and affinity < AFFINITY_MAX:
+                detection_range = max(detection_range, AI_PROVOKED_SCREEN_RANGE)
+            should_engage = detection_range > 0 and distance_screen <= detection_range
+
+        if should_engage and player is not None:
+            dx = player.x - self.x
+            dy = player.y - self.y
+            self._face_vector(dx, dy)
+            attack_range = float(ANIMAL_STATS[self.animal]["attack_range"])
+            if distance_screen <= attack_range:
+                if self.attack_cooldown <= 0:
+                    self._set_state("attack")
+                    self.attack_pending = True
+                    self.attack_cooldown = AI_ATTACK_COOLDOWN
+                else:
+                    self._set_state("idle")
+            else:
+                self._move_toward(player.x, player.y, dt, map_data)
+        else:
+            self.patrol_clock += dt
+            radius = 150.0 if self.animal == "crow" else 105.0
+            target_x = self.home_x + math.cos(self.patrol_clock * 0.65) * radius
+            target_y = self.home_y + math.sin(self.patrol_clock * 0.47) * radius
+            self._move_toward(target_x, target_y, dt, map_data)
+        self._advance_animation(dt)
+        return 0.0
+
+    def _advance_animation(self, dt: float) -> None:
+        frame_count, fps, loops = ANIMAL_ANIMATIONS[self.state]
+        self.frame_clock += dt
+        frame_duration = 1.0 / fps
+        while self.frame_clock >= frame_duration:
+            self.frame_clock -= frame_duration
+            if self.frame_index + 1 < frame_count:
+                self.frame_index += 1
+                continue
+            if loops:
+                self.frame_index = 0
+            elif self.state in ("hurt", "attack"):
+                self._set_state("idle")
+            else:
+                self.frame_index = frame_count - 1
+                self.frame_clock = 0.0
+            break
+
+
+@dataclass(slots=True)
 class WorldEntity:
     definition: WorldEntityDefinition
     hp: int
@@ -157,6 +440,7 @@ class WorldEntity:
     completed: bool = False
     cooldown_remaining: float = 0.0
     is_on: bool = False
+    reward_claimed: bool = False
 
     @classmethod
     def create(cls, definition: WorldEntityDefinition) -> "WorldEntity":
@@ -168,6 +452,11 @@ class WorldEntity:
 
     @property
     def sprite_path(self) -> Path:
+        if (
+            self.definition.entity_type == "fruit_tree"
+            and self.cooldown_remaining > 0
+        ):
+            return FRUIT_TREE_UNRIPE_SPRITE
         if self.definition.entity_type == "generator_switch":
             if not self.is_on and self.definition.alternate_sprite_path:
                 return self.definition.alternate_sprite_path
@@ -603,7 +892,7 @@ class GameUI:
         if crafting_open:
             self._draw_crafting()
 
-        self.font.draw(1017, 146, "TOOL", (255, 225, 165))
+        self.font.draw(1000, 146, "TOOL BAR", (255, 225, 165))
         self.font.draw(1161, 146, "ARMOR", (255, 225, 165))
         self.font.draw(1151, 17, f"DEF {self.model.defense}", (235, 242, 255))
 
@@ -852,8 +1141,12 @@ class Game:
         self._map_cache: dict[str, MapData] = {}
         self._background_cache: dict[str, p2.Image] = {}
         self._world_image_cache: dict[Path, p2.Image] = {}
+        self._animal_image_cache: dict[tuple[str, str], p2.Image] = {}
         self.world_drops: dict[str, list[WorldDrop]] = {}
+        self.placed_utilities: dict[str, list[PlacedUtility]] = {}
         self.world_entities: dict[str, list[WorldEntity]] = {}
+        self.enemies: dict[str, list[EnemyAI]] = {}
+        self.projectiles: dict[str, list[ThrownProjectile]] = {}
         self.map_data: MapData
         self.map_background: p2.Image | None
         self.camera_x = 0.0
@@ -866,7 +1159,9 @@ class Game:
         self.crafting_open = False
         self.pressed: set[int] = set()
         self.drag: DragState | None = None
-        self.toast = "E: 상호작용 | Space: 도구 | Tab: 인벤토리 | C: 제작"
+        self.mouse_screen_x = WINDOW_WIDTH * 0.72
+        self.mouse_screen_y = WINDOW_HEIGHT * 0.55
+        self.toast = "마우스: 조준/투척 | E: 상호작용 | Space: 도구 | Tab: 인벤토리"
         self.toast_error = False
         self.toast_timer = 5.0
         self._load_map(FIRST_MAP, "player_start")
@@ -897,19 +1192,26 @@ class Game:
                 self.pressed.discard(event.key)
             elif event.type == p2.SDL_MOUSEBUTTONDOWN and event.button == p2.SDL_BUTTON_LEFT:
                 x, y = event.x, WINDOW_HEIGHT - 1 - event.y
+                self._aim_at_screen(x, y)
                 if self.crafting_open:
                     recipe = self.ui.crafting_recipe_at(x, y)
                     if recipe is not None:
                         self._craft_recipe(recipe)
                     continue
                 source = self.ui.slot_at(x, y, self.inventory_open)
-                if source:
+                if source is not None:
                     stack = self.model.get(source)
                     if stack:
                         self.drag = DragState(source, stack.item_id, x, y)
-            elif event.type == p2.SDL_MOUSEMOTION and self.drag:
-                self.drag.x = event.x
-                self.drag.y = WINDOW_HEIGHT - 1 - event.y
+                    continue
+                if not self.inventory_open:
+                    self._throw_equipped_at_screen(x, y)
+            elif event.type == p2.SDL_MOUSEMOTION:
+                x, y = event.x, WINDOW_HEIGHT - 1 - event.y
+                self._aim_at_screen(x, y)
+                if self.drag:
+                    self.drag.x = x
+                    self.drag.y = y
             elif event.type == p2.SDL_MOUSEBUTTONUP and event.button == p2.SDL_BUTTON_LEFT:
                 self._finish_drag(event.x, WINDOW_HEIGHT - 1 - event.y)
 
@@ -937,7 +1239,7 @@ class Game:
             self._use_tool()
         elif key == p2.SDLK_e:
             if not self._interact_world():
-                self._use_tool()
+                self._use_equipped_with_e()
         elif key == p2.SDLK_h:
             self.damage_player(10.0)
         elif key == p2.SDLK_k:
@@ -950,7 +1252,13 @@ class Game:
     def _use_tool(self) -> None:
         tool = self.model.equipped_tool_definition
         if tool is None:
-            self.show_toast("tool 슬롯에 도구를 먼저 넣으세요", error=True)
+            self.show_toast("툴바에 아이템을 먼저 넣으세요", error=True)
+            return
+        if tool.item_id in INSTALLABLE_ITEM_IDS:
+            self.show_toast(f"{tool.label}: E 키로 설치할 수 있습니다")
+            return
+        if tool.item_id == "stone":
+            self.show_toast(f"{tool.label}: 마우스로 조준하고 좌클릭해 던집니다")
             return
         if tool.action == "torch":
             self.show_toast("횃불을 밝혔습니다")
@@ -958,6 +1266,13 @@ class Game:
         if tool.action and self.player.start_action(tool.action):
             labels = {"attack": "공격", "axe": "도끼질", "mine": "채광", "fish": "낚시"}
             self.show_toast(f"{tool.label}: {labels.get(tool.action, tool.action)}")
+
+    def _use_equipped_with_e(self) -> None:
+        stack = self.model.tool_slot
+        if stack is not None and stack.item_id in INSTALLABLE_ITEM_IDS:
+            self._place_utility(stack.item_id)
+            return
+        self._use_tool()
 
     def _craft_recipe(self, recipe: CraftingRecipe) -> None:
         if not self.model.has_recipe_ingredients(recipe):
@@ -972,6 +1287,177 @@ class Game:
 
     def _current_entities(self) -> list[WorldEntity]:
         return self.world_entities.setdefault(self.map_data.name, [])
+
+    def _current_enemies(self) -> list[EnemyAI]:
+        return self.enemies.setdefault(self.map_data.name, [])
+
+    def _current_projectiles(self) -> list[ThrownProjectile]:
+        return self.projectiles.setdefault(self.map_data.name, [])
+
+    def _equipped_throwable_id(self) -> str | None:
+        stack = self.model.tool_slot
+        if stack is None or stack.item_id not in THROWABLE_ITEM_IDS:
+            return None
+        return stack.item_id
+
+    def _aim_at_screen(self, x: float, y: float) -> None:
+        self.mouse_screen_x = x
+        self.mouse_screen_y = y
+        if self._equipped_throwable_id() is None or self.player.dead:
+            return
+        target_x, target_y = self.screen_to_world(x, y)
+        dx = target_x - self.player.x
+        dy = target_y - (self.player.y + CHARACTER_HEIGHT * 0.22)
+        if abs(dx) >= abs(dy):
+            self.player.direction = "right" if dx >= 0 else "left"
+        else:
+            self.player.direction = "up" if dy >= 0 else "down"
+
+    def _throw_target_world(self, screen_x: float, screen_y: float) -> tuple[float, float]:
+        target_x, target_y = self.screen_to_world(screen_x, screen_y)
+        start_x = self.player.x
+        start_y = self.player.y + CHARACTER_HEIGHT * 0.34
+        dx = target_x - start_x
+        dy = target_y - start_y
+        distance = math.hypot(dx, dy)
+        maximum = PROJECTILE_MAX_SCREEN_RANGE / self.camera_zoom
+        if distance > maximum and distance > 0:
+            target_x = start_x + dx / distance * maximum
+            target_y = start_y + dy / distance * maximum
+        return (
+            min(max(target_x, 8.0), self.map_data.width - 8.0),
+            min(max(target_y, 8.0), self.map_data.height - 8.0),
+        )
+
+    def _throw_equipped_at_screen(self, screen_x: float, screen_y: float) -> bool:
+        item_id = self._equipped_throwable_id()
+        if item_id is None:
+            return False
+        if self.player.dead or self.player.state in ACTION_STATES:
+            self.show_toast("현재 동작이 끝난 뒤 던질 수 있습니다", error=True)
+            return False
+        self._aim_at_screen(screen_x, screen_y)
+        target_x, target_y = self._throw_target_world(screen_x, screen_y)
+        start_x = self.player.x
+        start_y = self.player.y + CHARACTER_HEIGHT * 0.34
+        distance = math.hypot(target_x - start_x, target_y - start_y)
+        if distance < 30.0 / self.camera_zoom:
+            self.show_toast("조금 더 먼 곳을 조준하세요", error=True)
+            return False
+        if not self.player.start_action("attack"):
+            return False
+        thrown_stack = self.model.take(SlotRef.tool(), 1)
+        if thrown_stack is None:
+            return False
+        world_speed = PROJECTILE_SCREEN_SPEED / self.camera_zoom
+        self._current_projectiles().append(
+            ThrownProjectile(
+                item_id,
+                start_x,
+                start_y,
+                target_x,
+                target_y,
+                max(0.18, distance / world_speed),
+                PROJECTILE_ARC_SCREEN_HEIGHT / self.camera_zoom,
+            )
+        )
+        self.show_toast(f"{ITEMS[item_id].label}을(를) 던졌습니다", seconds=1.3)
+        return True
+
+    def _current_placed_utilities(self) -> list[PlacedUtility]:
+        return self.placed_utilities.setdefault(self.map_data.name, [])
+
+    def _nearest_placed_utility(self) -> PlacedUtility | None:
+        maximum_distance = PLACED_UTILITY_SCREEN_DISTANCE / self.camera_zoom
+        nearest: PlacedUtility | None = None
+        nearest_distance = math.inf
+        for utility in self._current_placed_utilities():
+            distance = math.hypot(
+                utility.x - self.player.x, utility.y - self.player.y
+            )
+            if distance <= maximum_distance and distance < nearest_distance:
+                nearest = utility
+                nearest_distance = distance
+        return nearest
+
+    def _utility_placement_position(
+        self, item_id: str
+    ) -> tuple[float, float] | None:
+        direction_vectors = {
+            "up": (0.0, 1.0),
+            "down": (0.0, -1.0),
+            "left": (-1.0, 0.0),
+            "right": (1.0, 0.0),
+        }
+        forward_x, forward_y = direction_vectors[self.player.direction]
+        side_x, side_y = -forward_y, forward_x
+        base_distance = UTILITY_PLACEMENT_SCREEN_DISTANCE / self.camera_zoom
+        width, height = PLACED_UTILITY_WORLD_SIZES[item_id]
+        obstacles = (*self.map_data.collisions, *self._dynamic_collisions())
+        for distance_scale in (1.0, 1.25, 0.8, 1.5, 1.75):
+            distance = base_distance * distance_scale
+            for side_offset in (0.0, -0.35, 0.35, -0.7, 0.7, -1.0, 1.0):
+                candidate_x = (
+                    self.player.x
+                    + forward_x * distance
+                    + side_x * distance * side_offset
+                )
+                candidate_y = (
+                    self.player.y
+                    + forward_y * distance
+                    + side_y * distance * side_offset
+                )
+                candidate_x = min(
+                    max(candidate_x, width / 2), self.map_data.width - width / 2
+                )
+                candidate_y = min(
+                    max(candidate_y, height / 2), self.map_data.height - height / 2
+                )
+                footprint = WorldRect(
+                    candidate_x - width * 0.34,
+                    candidate_y - height * 0.20,
+                    width * 0.68,
+                    height * 0.40,
+                )
+                if any(footprint.intersects(obstacle) for obstacle in obstacles):
+                    continue
+                overlaps_utility = False
+                for utility in self._current_placed_utilities():
+                    placed_width, placed_height = PLACED_UTILITY_WORLD_SIZES[
+                        utility.item_id
+                    ]
+                    placed_footprint = WorldRect(
+                        utility.x - placed_width * 0.34,
+                        utility.y - placed_height * 0.20,
+                        placed_width * 0.68,
+                        placed_height * 0.40,
+                    )
+                    if footprint.intersects(placed_footprint):
+                        overlaps_utility = True
+                        break
+                if not overlaps_utility:
+                    return candidate_x, candidate_y
+        return None
+
+    def _place_utility(self, item_id: str) -> None:
+        position = self._utility_placement_position(item_id)
+        if position is None:
+            self.show_toast("앞쪽에 설치할 공간이 없습니다", error=True)
+            return
+        stack = self.model.take(SlotRef.tool())
+        if stack is None or stack.item_id != item_id:
+            return
+        self._current_placed_utilities().append(
+            PlacedUtility(item_id, position[0], position[1])
+        )
+        self.show_toast(f"{ITEMS[item_id].label}을(를) 설치했습니다")
+
+    def _pickup_placed_utility(self, utility: PlacedUtility) -> None:
+        if self.model.add_item(utility.item_id, 1) != 0:
+            self.show_toast("인벤토리에 회수할 공간이 없습니다", error=True)
+            return
+        self._current_placed_utilities().remove(utility)
+        self.show_toast(f"{ITEMS[utility.item_id].label}을(를) 회수했습니다")
 
     @staticmethod
     def _entity_label(entity_type: str) -> str:
@@ -1009,6 +1495,14 @@ class Game:
         return nearest
 
     def _interact_world(self) -> bool:
+        utility = self._nearest_placed_utility()
+        if utility is not None:
+            self._pickup_placed_utility(utility)
+            return True
+        held = self.model.tool_slot
+        if held is not None and held.item_id in INSTALLABLE_ITEM_IDS:
+            self._place_utility(held.item_id)
+            return True
         entity = self._nearest_interactable()
         if entity is None:
             return False
@@ -1057,7 +1551,7 @@ class Game:
         if required_action and not self._equipped_action_is(required_action):
             required_label = "도끼" if required_action == "axe" else "곡괭이"
             self.show_toast(
-                f"{label} 채집은 tool 슬롯에 {required_label}를 장착해야 합니다",
+                f"{label} 채집은 툴바에 {required_label}를 넣어야 합니다",
                 error=True,
             )
             return
@@ -1114,6 +1608,93 @@ class Game:
                 entity.cooldown_remaining = max(0.0, entity.cooldown_remaining - dt)
                 if entity.cooldown_remaining == 0:
                     entity.completed = False
+
+    @staticmethod
+    def _distance_to_segment(
+        point_x: float,
+        point_y: float,
+        start_x: float,
+        start_y: float,
+        end_x: float,
+        end_y: float,
+    ) -> float:
+        segment_x = end_x - start_x
+        segment_y = end_y - start_y
+        length_squared = segment_x * segment_x + segment_y * segment_y
+        if length_squared <= 0.0001:
+            return math.hypot(point_x - start_x, point_y - start_y)
+        projection = (
+            (point_x - start_x) * segment_x
+            + (point_y - start_y) * segment_y
+        ) / length_squared
+        projection = min(max(projection, 0.0), 1.0)
+        closest_x = start_x + segment_x * projection
+        closest_y = start_y + segment_y * projection
+        return math.hypot(point_x - closest_x, point_y - closest_y)
+
+    @staticmethod
+    def _enemy_label(enemy: EnemyAI) -> str:
+        return {"crow": "까마귀", "wolf": "늑대", "bear": "곰"}[enemy.animal]
+
+    def _land_projectile(
+        self, projectile: ThrownProjectile, x: float, y: float
+    ) -> None:
+        self.world_drops.setdefault(self.map_data.name, []).append(
+            WorldDrop(
+                ItemStack(projectile.item_id, 1),
+                x,
+                y,
+                pickup_enabled=False,
+                pickup_origin_x=projectile.start_x,
+                pickup_origin_y=(
+                    projectile.start_y - CHARACTER_HEIGHT * 0.34
+                ),
+            )
+        )
+
+    def _update_projectiles(self, dt: float) -> None:
+        projectiles = self._current_projectiles()
+        for projectile in tuple(projectiles):
+            previous, current = projectile.advance(dt)
+            if projectile.elapsed < 0:
+                continue
+            hit_enemy: EnemyAI | None = None
+            for enemy in self._current_enemies():
+                if not enemy.alive:
+                    continue
+                center_x, center_y = enemy.hit_center
+                if self._distance_to_segment(
+                    center_x,
+                    center_y,
+                    previous[0],
+                    previous[1],
+                    current[0],
+                    current[1],
+                ) <= enemy.hit_radius:
+                    hit_enemy = enemy
+                    break
+            if hit_enemy is not None:
+                damage = hit_enemy.take_damage(PROJECTILE_DAMAGE[projectile.item_id])
+                projectiles.remove(projectile)
+                self._land_projectile(projectile, hit_enemy.x, hit_enemy.y)
+                label = self._enemy_label(hit_enemy)
+                if hit_enemy.alive:
+                    self.show_toast(
+                        f"{label} 명중 · {damage} 피해 · HP {hit_enemy.hp}/{hit_enemy.max_hp}",
+                        seconds=1.7,
+                    )
+                else:
+                    self.show_toast(f"{label} 명중 · {damage} 피해 · 처치", seconds=1.7)
+                continue
+            if projectile.landed:
+                projectiles.remove(projectile)
+                self._land_projectile(
+                    projectile, projectile.target_x, projectile.target_y
+                )
+
+    def _update_enemies(self, dt: float) -> None:
+        for enemy in self._current_enemies():
+            enemy.update(dt, self.map_data)
 
     def _dynamic_collisions(self) -> tuple[WorldRect, ...]:
         return tuple(
@@ -1186,7 +1767,7 @@ class Game:
         elif self.model.try_move(self.drag.source, target):
             self.show_toast("슬롯이 동기화되었습니다", seconds=1.2)
         else:
-            target_name = "도구" if target.area == "tool" else "방어구" if target.area == "armor" else "해당"
+            target_name = "툴바" if target.area == "tool" else "방어구" if target.area == "armor" else "해당"
             self.show_toast(f"{target_name} 슬롯에 넣을 수 없는 아이템입니다", error=True)
         self.drag = None
 
@@ -1248,13 +1829,49 @@ class Game:
         self.player.x, self.player.y = map_data.spawn(spawn_name)
         self.player._set_state("idle")
         self.world_drops.setdefault(map_name, [])
+        self.placed_utilities.setdefault(map_name, [])
+        self.projectiles.setdefault(map_name, [])
         if reloaded or map_name not in self.world_entities:
             self.world_entities[map_name] = [
                 WorldEntity.create(definition) for definition in map_data.entities
             ]
+        if reloaded or map_name not in self.enemies:
+            self.enemies[map_name] = self._spawn_map_enemies(map_data)
         self.camera_zoom = CAMERA_ZOOM
         self.transition_armed = False
         self._update_camera()
+
+    @staticmethod
+    def _spawn_map_enemies(map_data: MapData) -> list[EnemyAI]:
+        kinds = MAP_AI_KINDS.get(map_data.name, ())
+        if not kinds:
+            return []
+        anchor_x, anchor_y = map_data.spawn("player_start")
+        result: list[EnemyAI] = []
+        search_radii = (450.0, 600.0, 800.0, 1000.0)
+        search_angles = (60.0, 90.0, 120.0, 30.0, 150.0, 0.0, 180.0)
+        for index, animal in enumerate(kinds):
+            spawn_x, spawn_y = anchor_x, anchor_y
+            found = False
+            for radius in search_radii:
+                for angle_degrees in search_angles[index:] + search_angles[:index]:
+                    angle = math.radians(angle_degrees)
+                    candidate_x = anchor_x + math.cos(angle) * radius
+                    candidate_y = anchor_y + math.sin(angle) * radius
+                    if not (
+                        50.0 <= candidate_x <= map_data.width - 50.0
+                        and 50.0 <= candidate_y <= map_data.height - 50.0
+                    ):
+                        continue
+                    if map_data._blocked(candidate_x, candidate_y):
+                        continue
+                    spawn_x, spawn_y = candidate_x, candidate_y
+                    found = True
+                    break
+                if found:
+                    break
+            result.append(EnemyAI.create(animal, spawn_x, spawn_y))
+        return result
 
     def _update_camera(self) -> None:
         viewport_width = WINDOW_WIDTH / self.camera_zoom
@@ -1313,6 +1930,8 @@ class Game:
                 self.running = False
         else:
             self.player.update(dt, self.pressed, self._resolve_player_movement)
+            self._update_enemies(dt)
+            self._update_projectiles(dt)
             self._update_camera()
             self._auto_pickup_world_items()
             self._update_transition()
@@ -1327,6 +1946,118 @@ class Game:
             image = p2.load_image(str(path))
             self._world_image_cache[path] = image
         return image
+
+    def _animal_image(self, animal: str, state: str) -> p2.Image:
+        key = (animal, state)
+        image = self._animal_image_cache.get(key)
+        if image is None:
+            filename = f"{animal}_{state}.png"
+            path = ANIMAL_ASSET_ROOT / animal.capitalize() / filename
+            image = p2.load_image(str(path))
+            self._animal_image_cache[key] = image
+        return image
+
+    def _draw_enemy(self, enemy: EnemyAI) -> None:
+        size = enemy.display_size * self.camera_zoom
+        screen_x, screen_y = self.world_to_screen(
+            enemy.x, enemy.y + enemy.display_size * 0.42
+        )
+        if (
+            screen_x + size / 2 < -40
+            or screen_x - size / 2 > WINDOW_WIDTH + 40
+            or screen_y + size / 2 < -40
+            or screen_y - size / 2 > WINDOW_HEIGHT + 40
+        ):
+            return
+        image = self._animal_image(enemy.animal, enemy.state)
+        source_bottom = image.h - (enemy.direction_row + 1) * 256
+        image.clip_draw(
+            enemy.frame_index * 256,
+            source_bottom,
+            256,
+            256,
+            screen_x,
+            screen_y,
+            size,
+            size,
+        )
+        if enemy.alive and enemy.hp < enemy.max_hp:
+            bar_width = max(54.0, size * 0.55)
+            bar_bottom = screen_y + size * 0.42
+            p2.draw_rectangle(
+                screen_x - bar_width / 2 - 2,
+                bar_bottom - 2,
+                screen_x + bar_width / 2 + 2,
+                bar_bottom + 8,
+                22,
+                24,
+                22,
+                225,
+                True,
+            )
+            p2.draw_rectangle(
+                screen_x - bar_width / 2,
+                bar_bottom,
+                screen_x - bar_width / 2 + bar_width * enemy.hp / enemy.max_hp,
+                bar_bottom + 6,
+                205,
+                54,
+                65,
+                255,
+                True,
+            )
+
+    def _draw_projectile(self, projectile: ThrownProjectile) -> None:
+        if projectile.elapsed < 0:
+            return
+        world_x, world_y = projectile.position
+        screen_x, screen_y = self.world_to_screen(world_x, world_y)
+        angle = math.atan2(
+            projectile.target_y
+            - projectile.start_y
+            + math.pi
+            * projectile.arc_height
+            * math.cos(math.pi * projectile.progress),
+            projectile.target_x - projectile.start_x,
+        )
+        if projectile.item_id == "stone":
+            rotation = projectile.progress * math.tau * 1.5
+            size = 42.0
+        else:
+            rotation = angle - math.pi / 4.0
+            size = 90.0
+        self.ui.item_images[projectile.item_id].composite_draw(
+            rotation, "", screen_x, screen_y, size, size
+        )
+
+    def _draw_aim_indicator(self) -> None:
+        if (
+            self._equipped_throwable_id() is None
+            or self.inventory_open
+            or self.crafting_open
+            or self.player.dead
+        ):
+            return
+        target_x, target_y = self._throw_target_world(
+            self.mouse_screen_x, self.mouse_screen_y
+        )
+        start_x, start_y = self.world_to_screen(
+            self.player.x, self.player.y + CHARACTER_HEIGHT * 0.34
+        )
+        end_x, end_y = self.world_to_screen(target_x, target_y)
+        for index in range(1, 8):
+            progress = index / 8.0
+            x = start_x + (end_x - start_x) * progress
+            y = start_y + (end_y - start_y) * progress
+            p2.draw_rectangle(x - 2, y - 2, x + 2, y + 2, 246, 222, 132, 180, True)
+        p2.draw_rectangle(
+            end_x - 12, end_y - 1, end_x + 12, end_y + 1,
+            176, 241, 154, 235, True,
+        )
+        p2.draw_rectangle(
+            end_x - 1, end_y - 12, end_x + 1, end_y + 12,
+            176, 241, 154, 235, True,
+        )
 
     def _draw_tiled_sprite(
         self,
@@ -1404,28 +2135,25 @@ class Game:
                 self._world_image(entity.sprite_path).draw(
                     entity_x, entity_y, draw_width, draw_height
                 )
-                if (
-                    entity.definition.entity_type == "fruit_tree"
-                    and entity.cooldown_remaining > 0
-                ):
-                    marker_y = entity_y + draw_height * 0.1
-                    p2.draw_rectangle(
-                        entity_x - 34,
-                        marker_y - 13,
-                        entity_x + 34,
-                        marker_y + 13,
-                        20,
-                        55,
-                        25,
-                        225,
-                        True,
-                    )
-                    self.ui.font_small.draw(
-                        entity_x - 25,
-                        marker_y - 6,
-                        f"OK {math.ceil(entity.cooldown_remaining)}s",
-                        (188, 255, 166),
-                    )
+        for enemy in self._current_enemies():
+            self._draw_enemy(enemy)
+        for utility in self._current_placed_utilities():
+            utility_x, utility_y = self.world_to_screen(utility.x, utility.y)
+            width, height = PLACED_UTILITY_WORLD_SIZES[utility.item_id]
+            draw_width = width * self.camera_zoom
+            draw_height = height * self.camera_zoom
+            if (
+                utility_x + draw_width / 2 >= -40
+                and utility_x - draw_width / 2 <= WINDOW_WIDTH + 40
+                and utility_y + draw_height / 2 >= -40
+                and utility_y - draw_height / 2 <= WINDOW_HEIGHT + 40
+            ):
+                self.ui.item_images[utility.item_id].draw(
+                    utility_x,
+                    utility_y,
+                    draw_width,
+                    draw_height,
+                )
         for drop in self.world_drops[self.map_data.name]:
             drop_x, drop_y = self.world_to_screen(drop.x, drop.y)
             if -50 <= drop_x <= WINDOW_WIDTH + 50 and -50 <= drop_y <= WINDOW_HEIGHT + 50:
@@ -1444,6 +2172,8 @@ class Game:
                         str(drop.stack.count),
                         (255, 255, 255),
                     )
+        for projectile in self._current_projectiles():
+            self._draw_projectile(projectile)
         player_x, player_y = self.world_to_screen(self.player.x, self.player.y)
         self.ui.draw_equipped_world_tool(
             self.player,
@@ -1452,6 +2182,7 @@ class Game:
             y=player_y,
             display_scale=self.camera_zoom,
         )
+        self._draw_aim_indicator()
         self.player.draw(player_x, player_y, display_scale=self.camera_zoom)
         self.ui.draw_equipped_world_tool(
             self.player,
@@ -1460,7 +2191,21 @@ class Game:
             y=player_y,
             display_scale=self.camera_zoom,
         )
-        nearby = self._nearest_interactable()
+        nearby_utility = self._nearest_placed_utility()
+        nearby: WorldEntity | None = None
+        if nearby_utility is not None:
+            prompt_x, prompt_y = self.world_to_screen(
+                nearby_utility.x, nearby_utility.y
+            )
+            label = ITEMS[nearby_utility.item_id].label
+            self.ui.font_small.draw(
+                prompt_x - 45,
+                prompt_y + 55,
+                f"E · {label} 회수",
+                (255, 245, 176),
+            )
+        else:
+            nearby = self._nearest_interactable()
         if nearby is not None:
             rect = nearby.definition.rect
             prompt_x, prompt_y = self.world_to_screen(

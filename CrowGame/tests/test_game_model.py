@@ -125,13 +125,13 @@ class InventoryModelTests(unittest.TestCase):
         self.assertEqual(4, model.remove_item("fiber", 4))
         self.assertEqual(1, model.slots[0].count)
 
-    def test_tool_slot_rejects_non_tools_without_mutation(self) -> None:
+    def test_tool_slot_accepts_every_item_category(self) -> None:
         model = InventoryModel()
-        stack = ItemStack("wood", 4)
-        model.slots[0] = stack
-        self.assertFalse(model.try_move(SlotRef.inventory(0), SlotRef.tool()))
-        self.assertIs(stack, model.slots[0])
-        self.assertIsNone(model.tool_slot)
+        for item_id in ("wood", "light_armor", "campfire", "fruit"):
+            model.slots[0] = ItemStack(item_id)
+            self.assertTrue(model.try_move(SlotRef.inventory(0), SlotRef.tool()))
+            self.assertEqual(item_id, model.tool_slot.item_id)
+            self.assertTrue(model.try_move(SlotRef.tool(), SlotRef.inventory(0)))
 
     def test_armor_slot_updates_defense_and_rejects_tools(self) -> None:
         model = InventoryModel(base_defense=2)
@@ -143,7 +143,7 @@ class InventoryModelTests(unittest.TestCase):
         self.assertEqual("light_armor", model.armor_slot.item_id)
         self.assertEqual("stone_sword", model.slots[1].item_id)
 
-    def test_equipment_swaps_only_compatible_items(self) -> None:
+    def test_tool_slot_swaps_all_items_while_armor_stays_restricted(self) -> None:
         model = InventoryModel()
         model.tool_slot = ItemStack("wooden_axe")
         model.slots[0] = ItemStack("stone_sword")
@@ -154,9 +154,9 @@ class InventoryModelTests(unittest.TestCase):
         model.slots[1] = ItemStack("fiber", 2)
         before_tool = model.tool_slot
         before_inventory = model.slots[1]
-        self.assertFalse(model.try_move(SlotRef.tool(), SlotRef.inventory(1)))
-        self.assertIs(before_tool, model.tool_slot)
-        self.assertIs(before_inventory, model.slots[1])
+        self.assertTrue(model.try_move(SlotRef.tool(), SlotRef.inventory(1)))
+        self.assertIs(before_inventory, model.tool_slot)
+        self.assertIs(before_tool, model.slots[1])
 
     def test_merge_never_loses_overflow(self) -> None:
         model = InventoryModel()

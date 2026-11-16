@@ -214,7 +214,7 @@ class InventoryModel:
         if ref.area == "inventory":
             return True
         if ref.area == "tool":
-            return stack.definition.category == "tool"
+            return True
         return stack.definition.category == "armor"
 
     def add_item(self, item_id: str, count: int = 1) -> int:
