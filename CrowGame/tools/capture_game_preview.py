@@ -42,14 +42,16 @@ def main() -> None:
     projectile_flight_preview = generated / "game_preview_projectile_flight.png"
     projectile_aim_preview = generated / "game_preview_projectile_aim.png"
     ai_hurt_preview = generated / "game_preview_ai_hurt.png"
+    ai_attack_preview = generated / "game_preview_ai_attack.png"
     action_previews = {
+        "attack": generated / "game_preview_attack.png",
         "axe": generated / "game_preview_axe.png",
         "mine": generated / "game_preview_mine.png",
         "death": generated / "game_preview_death.png",
     }
     direction_previews = {
         (action, direction): generated / f"game_preview_{action}_{direction}.png"
-        for action in ("axe", "mine", "fish")
+        for action in ("attack", "axe", "mine", "fish")
         for direction in ("down", "up", "right", "left")
     }
     p2.open_canvas(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -57,8 +59,12 @@ def main() -> None:
         game = Game()
         game.inventory_open = True
         game.model.try_move(SlotRef.inventory(0), SlotRef.tool())
-        game.model.try_move(SlotRef.inventory(10), SlotRef.armor())
-        game.toast = "인벤토리·핫바 동기화 / 도구·방어구 장착"
+        game.model.armor_slot = ItemStack("light_armor", durability=12)
+        game.model.slots[1].lose_durability(8)
+        hovered_rect = game.ui.inventory_slots()[1][1]
+        game.mouse_screen_x = hovered_rect.cx
+        game.mouse_screen_y = hovered_rect.cy
+        game.toast = "내구도 게이지 · 슬롯에 마우스를 올리면 현재/최대 표시"
         game.toast_timer = 99
         game.draw(present=False)
         capture(inventory_preview)
@@ -74,7 +80,9 @@ def main() -> None:
         p2.update_canvas()
 
         for state, destination in action_previews.items():
-            if state == "axe":
+            if state == "attack":
+                game.model.tool_slot = ItemStack("wooden_sword")
+            elif state == "axe":
                 game.model.tool_slot = ItemStack("wooden_axe")
             elif state == "mine":
                 game.model.tool_slot = ItemStack("wooden_pickaxe")
@@ -82,13 +90,28 @@ def main() -> None:
             game.player.dead = state == "death"
             game.player.direction = "right"
             game.player.frame_index = 3 if state == "death" else 2
-            game.toast = {"axe": "도끼질", "mine": "채광질", "death": "쓰러지기"}[state]
+            game.toast = {
+                "attack": "통일된 검 공격",
+                "axe": "도끼질",
+                "mine": "채광질",
+                "death": "쓰러지기",
+            }[state]
             game.draw(present=False)
             capture(destination)
             p2.update_canvas()
 
-        action_tools = {"axe": "wooden_axe", "mine": "wooden_pickaxe", "fish": "fishing_rod"}
-        action_labels = {"axe": "도끼질", "mine": "채광질", "fish": "낚시"}
+        action_tools = {
+            "attack": "wooden_sword",
+            "axe": "wooden_axe",
+            "mine": "wooden_pickaxe",
+            "fish": "fishing_rod",
+        }
+        action_labels = {
+            "attack": "검 공격",
+            "axe": "도끼질",
+            "mine": "채광질",
+            "fish": "낚시",
+        }
         direction_labels = {"down": "앞", "up": "뒤", "right": "오른쪽", "left": "왼쪽"}
         for (state, direction), destination in direction_previews.items():
             game.model.tool_slot = ItemStack(action_tools[state])
@@ -148,6 +171,7 @@ def main() -> None:
         p2.update_canvas()
 
         game._load_map("wolf_map.json", "player_start")
+        game.species_affinity.update({"crow": 25, "wolf": 60, "bear": 90})
         wolf = game.enemies["wolf_map.json"][0]
         game.player.x = wolf.x - 520
         game.player.y = wolf.y
@@ -171,9 +195,23 @@ def main() -> None:
             game._update_projectiles(0.05)
             if not game.projectiles["wolf_map.json"]:
                 break
-        wolf.update(0.10, game.map_data)
+        wolf.update(
+            0.10,
+            game.map_data,
+            game.player,
+            game.species_affinity[wolf.animal],
+            game.camera_zoom,
+        )
         game.draw(present=False)
         capture(ai_hurt_preview)
+        p2.update_canvas()
+
+        game.player.state = "idle"
+        wolf._set_state("attack")
+        wolf.frame_index = 2
+        game.toast = "경계 관계 · 늑대 근거리 공격"
+        game.draw(present=False)
+        capture(ai_attack_preview)
         p2.update_canvas()
     finally:
         p2.close_canvas()
@@ -185,6 +223,7 @@ def main() -> None:
     print(projectile_flight_preview)
     print(projectile_aim_preview)
     print(ai_hurt_preview)
+    print(ai_attack_preview)
     for destination in action_previews.values():
         print(destination)
     for destination in direction_previews.values():

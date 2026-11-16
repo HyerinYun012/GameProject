@@ -28,6 +28,7 @@ from CrowGame.main import (  # noqa: E402
     PlacedUtility,
     WorldDrop,
     WorldEntity,
+    affinity_relationship,
 )
 from CrowGame.map_system import FIRST_MAP, load_map_data  # noqa: E402
 
@@ -61,6 +62,8 @@ def make_game() -> Game:
     game.placed_utilities = {FIRST_MAP: []}
     game.enemies = {FIRST_MAP: []}
     game.projectiles = {FIRST_MAP: []}
+    game.species_affinity = {"crow": 0, "wolf": 0, "bear": 0}
+    game.ending_variant = ""
     return game
 
 
@@ -347,7 +350,9 @@ class GameActionTests(unittest.TestCase):
         self.assertTrue(tree.visible)
 
         game.model.tool_slot = ItemStack("wooden_axe")
-        for _ in range(3):
+        game._harvest_resource(tree)
+        self.assertEqual(20, game.model.tool_slot.durability)
+        for _ in range(2):
             game._harvest_resource(tree)
         self.assertFalse(tree.visible)
         self.assertEqual("wood", game.model.slots[0].item_id)
@@ -360,7 +365,9 @@ class GameActionTests(unittest.TestCase):
         game._harvest_resource(rock)
         self.assertEqual(3, rock.hp)
         game.model.tool_slot = ItemStack("wooden_pickaxe")
-        for _ in range(3):
+        game._harvest_resource(rock)
+        self.assertEqual(20, game.model.tool_slot.durability)
+        for _ in range(2):
             game._harvest_resource(rock)
         self.assertFalse(rock.visible)
         self.assertEqual("stone", game.model.slots[0].item_id)
@@ -408,6 +415,7 @@ class GameActionTests(unittest.TestCase):
 
     def test_thrown_spear_flies_into_ai_and_causes_hurt(self) -> None:
         game = make_game()
+        game.species_affinity["wolf"] = 60
         game.player.x = 300.0
         game.player.y = 300.0
         game.camera_x = game.player.x
@@ -431,7 +439,9 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual("hurt", enemy.state)
         self.assertEqual([], game.projectiles[FIRST_MAP])
         self.assertEqual("wooden_spear", game.world_drops[FIRST_MAP][0].stack.item_id)
+        self.assertEqual(9, game.world_drops[FIRST_MAP][0].stack.durability)
         self.assertFalse(game.world_drops[FIRST_MAP][0].pickup_enabled)
+        self.assertEqual(55, game.species_affinity["wolf"])
 
     def test_throwing_one_stone_keeps_the_rest_equipped(self) -> None:
         game = make_game()
@@ -456,9 +466,11 @@ class GameActionTests(unittest.TestCase):
 
         self.assertEqual(enemy.max_hp, enemy.hp)
         self.assertEqual("idle", enemy.state)
+        self.assertEqual(9, game.world_drops[FIRST_MAP][0].stack.durability)
 
     def test_event_with_after_sprite_changes_instead_of_disappearing(self) -> None:
         game = make_game()
+        game.species_affinity["wolf"] = 95
         wolf_den = place_near_entity(game, "wolf_map.json", "wolf_den_repair")
         game._activate_event(wolf_den)
         self.assertFalse(wolf_den.completed)
@@ -467,6 +479,8 @@ class GameActionTests(unittest.TestCase):
         self.assertTrue(wolf_den.completed)
         self.assertTrue(wolf_den.visible)
         self.assertEqual(wolf_den.definition.alternate_sprite_path, wolf_den.sprite_path)
+        self.assertTrue(wolf_den.reward_claimed)
+        self.assertEqual(100, game.species_affinity["wolf"])
 
     def test_one_shot_event_without_after_sprite_disappears(self) -> None:
         game = make_game()
@@ -474,6 +488,139 @@ class GameActionTests(unittest.TestCase):
         game._activate_event(trap)
         self.assertTrue(trap.completed)
         self.assertFalse(trap.visible)
+        self.assertEqual(5, game.species_affinity["wolf"])
+        game._activate_event(trap)
+        self.assertEqual(5, game.species_affinity["wolf"])
+
+    def test_generator_reward_is_claimed_only_once(self) -> None:
+        game = make_game()
+        generator = place_near_entity(game, "crow_map.json", "generator_switch")
+
+        game._activate_event(generator)
+        self.assertEqual(10, game.species_affinity["crow"])
+        self.assertTrue(generator.reward_claimed)
+        game._activate_event(generator)
+        self.assertEqual(10, game.species_affinity["crow"])
+
+    def test_affinity_relationship_thresholds(self) -> None:
+        self.assertEqual("hostile", affinity_relationship(0))
+        self.assertEqual("hostile", affinity_relationship(39))
+        self.assertEqual("wary", affinity_relationship(40))
+        self.assertEqual("wary", affinity_relationship(79))
+        self.assertEqual("near_friendly", affinity_relationship(80))
+        self.assertEqual("near_friendly", affinity_relationship(99))
+        self.assertEqual("reconciled", affinity_relationship(100))
+
+    def test_near_friendly_ai_attacks_only_at_very_close_range(self) -> None:
+        game = make_game()
+        game.player.x = 500.0
+        game.player.y = 500.0
+        close_enemy = EnemyAI.create("crow", 535.0, 500.0)
+        peaceful_enemy = EnemyAI.create("crow", 535.0, 500.0)
+
+        damage = 0.0
+        for _ in range(20):
+            damage += close_enemy.update(
+                0.1, game.map_data, game.player, 99, game.camera_zoom
+            )
+        peaceful_damage = sum(
+            peaceful_enemy.update(
+                0.1, game.map_data, game.player, 100, game.camera_zoom
+            )
+            for _ in range(20)
+        )
+
+        self.assertGreater(damage, 0.0)
+        self.assertEqual(0.0, peaceful_damage)
+
+    def test_hostile_detection_range_is_longer_than_wary_range(self) -> None:
+        game = make_game()
+        game.player.x = 100.0
+        game.player.y = 500.0
+        open_map = SimpleNamespace(
+            resolve_movement=lambda x, y, dx, dy: (x + dx, y + dy)
+        )
+        hostile_enemy = EnemyAI.create("wolf", 500.0, 500.0)
+        wary_enemy = EnemyAI.create("wolf", 500.0, 500.0)
+
+        hostile_enemy.update(0.25, open_map, game.player, 39, 1.0)
+        wary_enemy.update(0.25, open_map, game.player, 40, 1.0)
+
+        self.assertLess(hostile_enemy.x, 500.0)
+        self.assertGreater(wary_enemy.x, 500.0)
+
+    def test_melee_hit_damages_ai_and_reduces_species_affinity(self) -> None:
+        game = make_game()
+        game.player.x = 300.0
+        game.player.y = 300.0
+        game.player.direction = "right"
+        enemy = EnemyAI.create("wolf", 400.0, 300.0)
+        game.enemies[FIRST_MAP] = [enemy]
+        game.species_affinity["wolf"] = 50
+        game.model.tool_slot = ItemStack("wooden_sword")
+
+        game._use_tool()
+
+        self.assertEqual(45, enemy.hp)
+        self.assertEqual("hurt", enemy.state)
+        self.assertEqual(45, game.species_affinity["wolf"])
+        self.assertEqual(36, game.model.tool_slot.durability)
+
+    def test_sword_durability_does_not_drop_when_attack_misses(self) -> None:
+        game = make_game()
+        game.model.tool_slot = ItemStack("wooden_sword")
+
+        game._use_tool()
+
+        self.assertEqual(40, game.model.tool_slot.durability)
+
+    def test_spear_breaks_after_landing_at_zero_durability(self) -> None:
+        game = make_game()
+        game.model.tool_slot = ItemStack("wooden_spear", durability=3)
+
+        self.assertTrue(game._throw_equipped_at_screen(1000.0, 360.0))
+        for _ in range(30):
+            game._update_projectiles(0.05)
+            if not game.projectiles[FIRST_MAP]:
+                break
+
+        self.assertEqual([], game.world_drops[FIRST_MAP])
+        self.assertIn("파괴", game.toast)
+
+    def test_fishing_rod_waits_for_future_bite_before_losing_durability(self) -> None:
+        game = make_game()
+        game.model.tool_slot = ItemStack("fishing_rod")
+
+        game._use_tool()
+
+        self.assertEqual(30, game.model.tool_slot.durability)
+
+    def test_armor_absorbs_hits_until_it_breaks_before_hp_is_damaged(self) -> None:
+        game = make_game()
+        game.model.armor_slot = ItemStack("light_armor", durability=4)
+
+        self.assertEqual(0.0, game.damage_player(50.0))
+        self.assertEqual(100.0, game.player.hp)
+        self.assertEqual(2, game.model.armor_slot.durability)
+
+        self.assertEqual(0.0, game.damage_player(50.0))
+        self.assertEqual(100.0, game.player.hp)
+        self.assertIsNone(game.model.armor_slot)
+
+        self.assertEqual(50.0, game.damage_player(50.0))
+        self.assertEqual(50.0, game.player.hp)
+
+    def test_ending_changes_with_final_species_affinity(self) -> None:
+        game = make_game()
+        cases = (
+            ({"crow": 100, "wolf": 100, "bear": 100}, "완전한 화해 엔딩"),
+            ({"crow": 80, "wolf": 90, "bear": 99}, "공존 엔딩"),
+            ({"crow": 40, "wolf": 70, "bear": 79}, "불안한 휴전 엔딩"),
+            ({"crow": 100, "wolf": 39, "bear": 100}, "대립 엔딩"),
+        )
+        for affinity, expected in cases:
+            game.species_affinity = affinity
+            self.assertEqual(expected, game._affinity_ending())
 
 
 if __name__ == "__main__":

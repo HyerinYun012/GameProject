@@ -26,6 +26,7 @@ class ItemDefinition:
     max_stack: int = 1
     defense: int = 0
     action: str | None = None
+    max_durability: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,17 +40,47 @@ class CraftingRecipe:
 
 
 ITEMS: dict[str, ItemDefinition] = {
-    "wooden_sword": ItemDefinition("wooden_sword", "나무 검", "wooden sword.png", "tool", action="attack"),
-    "stone_sword": ItemDefinition("stone_sword", "돌 검", "Stone Sword.png", "tool", action="attack"),
-    "fishing_rod": ItemDefinition("fishing_rod", "낚싯대", "fishing rod.png", "tool", action="fish"),
+    "wooden_sword": ItemDefinition(
+        "wooden_sword", "나무 검", "wooden sword.png", "tool",
+        action="attack", max_durability=40,
+    ),
+    "stone_sword": ItemDefinition(
+        "stone_sword", "돌 검", "Stone Sword.png", "tool",
+        action="attack", max_durability=80,
+    ),
+    "fishing_rod": ItemDefinition(
+        "fishing_rod", "낚싯대", "fishing rod.png", "tool",
+        action="fish", max_durability=30,
+    ),
     "torch": ItemDefinition("torch", "횃불", "torchlight.png", "tool", action="torch"),
-    "wooden_pickaxe": ItemDefinition("wooden_pickaxe", "나무 곡괭이", "Wooden Pickaxe.png", "tool", action="mine"),
-    "stone_pickaxe": ItemDefinition("stone_pickaxe", "돌 곡괭이", "stone pickaxe.png", "tool", action="mine"),
-    "wooden_axe": ItemDefinition("wooden_axe", "나무 도끼", "wooden ax.png", "tool", action="axe"),
-    "stone_axe": ItemDefinition("stone_axe", "돌 도끼", "stone ax.png", "tool", action="axe"),
-    "wooden_spear": ItemDefinition("wooden_spear", "나무 창", "Wooden Spear.png", "tool", action="attack"),
-    "stone_spear": ItemDefinition("stone_spear", "돌 창", "Stone Spear.png", "tool", action="attack"),
-    "light_armor": ItemDefinition("light_armor", "간이 갑옷", "Light armor.png", "armor", defense=4),
+    "wooden_pickaxe": ItemDefinition(
+        "wooden_pickaxe", "나무 곡괭이", "Wooden Pickaxe.png", "tool",
+        action="mine", max_durability=24,
+    ),
+    "stone_pickaxe": ItemDefinition(
+        "stone_pickaxe", "돌 곡괭이", "stone pickaxe.png", "tool",
+        action="mine", max_durability=60,
+    ),
+    "wooden_axe": ItemDefinition(
+        "wooden_axe", "나무 도끼", "wooden ax.png", "tool",
+        action="axe", max_durability=24,
+    ),
+    "stone_axe": ItemDefinition(
+        "stone_axe", "돌 도끼", "stone ax.png", "tool",
+        action="axe", max_durability=60,
+    ),
+    "wooden_spear": ItemDefinition(
+        "wooden_spear", "나무 창", "Wooden Spear.png", "tool",
+        action="attack", max_durability=12,
+    ),
+    "stone_spear": ItemDefinition(
+        "stone_spear", "돌 창", "Stone Spear.png", "tool",
+        action="attack", max_durability=21,
+    ),
+    "light_armor": ItemDefinition(
+        "light_armor", "간이 갑옷", "Light armor.png", "armor",
+        max_durability=20,
+    ),
     "wood": ItemDefinition("wood", "나뭇가지", "wood.png", "material", max_stack=99),
     "stone": ItemDefinition("stone", "돌", "stone.png", "material", max_stack=99),
     "fiber": ItemDefinition("fiber", "섬유", "fiber.png", "material", max_stack=99),
@@ -84,6 +115,7 @@ ARMOR_ITEM_IDS = frozenset(item_id for item_id, item in ITEMS.items() if item.ca
 class ItemStack:
     item_id: str
     count: int = 1
+    durability: int | None = None
 
     def __post_init__(self) -> None:
         if self.item_id not in ITEMS:
@@ -92,10 +124,33 @@ class ItemStack:
             raise ValueError("Item stack count must be positive")
         if self.count > ITEMS[self.item_id].max_stack:
             raise ValueError("Item stack exceeds its maximum size")
+        maximum = ITEMS[self.item_id].max_durability
+        if maximum is None:
+            if self.durability is not None:
+                raise ValueError("Non-durable items cannot have durability")
+        elif self.durability is None:
+            self.durability = maximum
+        elif not 0 <= self.durability <= maximum:
+            raise ValueError("Item durability is outside its valid range")
 
     @property
     def definition(self) -> ItemDefinition:
         return ITEMS[self.item_id]
+
+    @property
+    def durability_ratio(self) -> float | None:
+        maximum = self.definition.max_durability
+        if maximum is None or self.durability is None:
+            return None
+        return self.durability / maximum
+
+    def lose_durability(self, amount: int) -> bool:
+        if amount < 0:
+            raise ValueError("Durability loss cannot be negative")
+        if self.definition.max_durability is None or self.durability is None:
+            return False
+        self.durability = max(0, self.durability - amount)
+        return self.durability == 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +302,18 @@ class InventoryModel:
                 return 0
         return remaining
 
+    def add_stack(self, stack: ItemStack) -> int:
+        """Add an existing stack while preserving per-instance durability."""
+        if stack.definition.max_durability is None:
+            return self.add_item(stack.item_id, stack.count)
+        for index, current in enumerate(self.slots):
+            if current is None:
+                self.slots[index] = ItemStack(
+                    stack.item_id, stack.count, stack.durability
+                )
+                return 0
+        return stack.count
+
     def take(self, source: SlotRef, count: int | None = None) -> ItemStack | None:
         """Remove and return a stack (or part of it) from a slot.
 
@@ -263,7 +330,7 @@ class InventoryModel:
             self._set(source, None)
             return stack
         stack.count -= count
-        return ItemStack(stack.item_id, count)
+        return ItemStack(stack.item_id, count, stack.durability)
 
     def remove_item(self, item_id: str, count: int = 1) -> int:
         """Remove up to ``count`` items and return the amount actually removed."""
@@ -304,7 +371,9 @@ class InventoryModel:
         if not self.has_recipe_ingredients(recipe):
             return False
         snapshot = [
-            None if stack is None else ItemStack(stack.item_id, stack.count)
+            None
+            if stack is None
+            else ItemStack(stack.item_id, stack.count, stack.durability)
             for stack in self.slots
         ]
         for item_id, needed in recipe.ingredients:

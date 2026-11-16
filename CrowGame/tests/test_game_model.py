@@ -53,6 +53,49 @@ class InventoryModelTests(unittest.TestCase):
         self.assertEqual({"fiber": 4, "wood": 1}, recipes["travel_bedding"])
         self.assertEqual({"wood": 2, "fiber": 2}, recipes["fishing_rod"])
 
+    def test_requested_max_durability_values_are_registered(self) -> None:
+        expected = {
+            "wooden_sword": 40,
+            "stone_sword": 80,
+            "wooden_pickaxe": 24,
+            "stone_pickaxe": 60,
+            "fishing_rod": 30,
+            "wooden_spear": 12,
+            "stone_spear": 21,
+            "stone_axe": 60,
+            "wooden_axe": 24,
+            "light_armor": 20,
+        }
+        self.assertEqual(
+            expected,
+            {item_id: ITEMS[item_id].max_durability for item_id in expected},
+        )
+
+    def test_durable_stack_starts_full_and_preserves_wear_on_pickup(self) -> None:
+        stack = ItemStack("stone_sword")
+        self.assertEqual(80, stack.durability)
+        self.assertFalse(stack.lose_durability(4))
+        self.assertEqual(76, stack.durability)
+
+        model = InventoryModel()
+        self.assertEqual(0, model.add_stack(stack))
+        self.assertEqual(76, model.slots[0].durability)
+
+    def test_crafted_tool_starts_at_full_durability(self) -> None:
+        model = InventoryModel()
+        model.add_item("wood", 1)
+        model.add_item("fiber", 1)
+        recipe = next(
+            recipe for recipe in CRAFTING_RECIPES
+            if recipe.output_item_id == "wooden_axe"
+        )
+        self.assertTrue(model.craft(recipe))
+        crafted = next(
+            stack for stack in model.slots
+            if stack is not None and stack.item_id == "wooden_axe"
+        )
+        self.assertEqual(24, crafted.durability)
+
     def test_crafting_atomically_consumes_materials_and_adds_output(self) -> None:
         model = InventoryModel()
         model.add_item("wood", 2)
@@ -133,12 +176,12 @@ class InventoryModelTests(unittest.TestCase):
             self.assertEqual(item_id, model.tool_slot.item_id)
             self.assertTrue(model.try_move(SlotRef.tool(), SlotRef.inventory(0)))
 
-    def test_armor_slot_updates_defense_and_rejects_tools(self) -> None:
+    def test_armor_slot_preserves_base_defense_and_rejects_tools(self) -> None:
         model = InventoryModel(base_defense=2)
         model.slots[0] = ItemStack("light_armor")
         model.slots[1] = ItemStack("stone_sword")
         self.assertTrue(model.try_move(SlotRef.inventory(0), SlotRef.armor()))
-        self.assertEqual(6, model.defense)
+        self.assertEqual(2, model.defense)
         self.assertFalse(model.try_move(SlotRef.inventory(1), SlotRef.armor()))
         self.assertEqual("light_armor", model.armor_slot.item_id)
         self.assertEqual("stone_sword", model.slots[1].item_id)

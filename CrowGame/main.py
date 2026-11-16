@@ -81,6 +81,12 @@ PROJECTILE_DAMAGE = {
     "stone_spear": 50,
     "stone": 18,
 }
+MELEE_DAMAGE = {
+    "wooden_sword": 25,
+    "stone_sword": 35,
+    "wooden_spear": 30,
+    "stone_spear": 40,
+}
 PLACED_UTILITY_SCREEN_DISTANCE = 130.0
 UTILITY_PLACEMENT_SCREEN_DISTANCE = 105.0
 INSTALLABLE_ITEM_IDS = frozenset({"travel_bedding", "campfire"})
@@ -159,6 +165,12 @@ AI_DETECTION_SCREEN_RANGES = {
 AI_PROVOKED_SCREEN_RANGE = 620.0
 AI_ATTACK_COOLDOWN = 1.35
 AI_PROVOKED_SECONDS = 6.0
+AFFINITY_COLORS = {
+    "hostile": (205, 54, 65),
+    "wary": (224, 145, 54),
+    "near_friendly": (81, 154, 214),
+    "reconciled": (79, 190, 105),
+}
 
 
 def affinity_relationship(value: int) -> str:
@@ -240,6 +252,7 @@ class ThrownProjectile:
     target_y: float
     duration: float
     arc_height: float
+    durability: int | None
     elapsed: float = -PROJECTILE_RELEASE_DELAY
 
     @property
@@ -501,13 +514,18 @@ MOVE_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "up": frames_at(192, VERTICAL_MOVE_X),
 }
 
-# The atlas has clean front/back body frames but only side-on tool swings.  For
-# vertical tool use, these four body poses are combined with a direction-aware
-# world-tool arc in GameUI.  This avoids showing a sideways body while facing up
-# or down and preserves the original side animations where they exist.
+# Every tool action uses the same clean front/back body poses.  Horizontal tool
+# source animations are intentionally not used; GameUI supplies the directional
+# item arc while the character body stays visually consistent.
 VERTICAL_TOOL_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "down": frames_at(192, (176, 208, 240, 272)),
     "up": frames_at(144, (176, 208, 240, 272)),
+}
+UNIFIED_ACTION_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    "down": VERTICAL_TOOL_FRAMES["down"],
+    "left": VERTICAL_TOOL_FRAMES["down"],
+    "right": VERTICAL_TOOL_FRAMES["down"],
+    "up": VERTICAL_TOOL_FRAMES["up"],
 }
 
 HURT_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
@@ -517,12 +535,8 @@ HURT_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
     "left": frames_at(528, (0, 32, 64)),
 }
 
-ATTACK_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
-    "right": frames_at(288, (0, 32, 32, 0)),
-    "left": frames_at(288, (64, 96, 96, 64)),
-    "up": frames_at(336, (0, 32, 32, 0)),
-    "down": frames_at(336, (64, 96, 96, 64)),
-}
+# Backwards-compatible public name used by tests and preview tooling.
+ATTACK_FRAMES = UNIFIED_ACTION_FRAMES
 
 
 class Player:
@@ -551,8 +565,8 @@ class Player:
             return MOVE_FRAMES[self.direction]
         if self.state == "hurt":
             return HURT_FRAMES[self.direction]
-        if self.state == "attack":
-            return ATTACK_FRAMES[self.direction]
+        if self.state in ("attack", "axe", "mine", "fish"):
+            return UNIFIED_ACTION_FRAMES[self.direction]
         if self.state == "death":
             base = {
                 "left": IDLE_FRAMES["left"][0],
@@ -562,21 +576,6 @@ class Player:
             }[self.direction]
             return (base, base, base, base)
 
-        flip = "h" if self.direction == "left" else ""
-        if self.state == "axe":
-            if self.direction in VERTICAL_TOOL_FRAMES:
-                return VERTICAL_TOOL_FRAMES[self.direction]
-            return frames_at(288, (176, 208, 240, 272), flip)
-        if self.state == "mine":
-            if self.direction in VERTICAL_TOOL_FRAMES:
-                return VERTICAL_TOOL_FRAMES[self.direction]
-            return frames_at(240, (176, 208, 240, 272), flip)
-        if self.state == "fish":
-            if self.direction in VERTICAL_TOOL_FRAMES:
-                return VERTICAL_TOOL_FRAMES[self.direction]
-            if self.direction == "left":
-                return frames_at(432, (240, 272, 272, 240))
-            return frames_at(432, (176, 208, 208, 176))
         return IDLE_FRAMES[self.direction]
 
     def _set_state(self, state: str) -> None:
@@ -852,6 +851,9 @@ class GameUI:
         drag: DragState | None,
         toast: str,
         toast_error: bool,
+        hovered_slot: SlotRef | None,
+        mouse_x: float,
+        mouse_y: float,
     ) -> None:
         self.hotbar_image.draw(
             self.HOTBAR_RECT.cx,
@@ -894,7 +896,12 @@ class GameUI:
 
         self.font.draw(1000, 146, "TOOL BAR", (255, 225, 165))
         self.font.draw(1161, 146, "ARMOR", (255, 225, 165))
-        self.font.draw(1151, 17, f"DEF {self.model.defense}", (235, 242, 255))
+        armor = self.model.armor_slot
+        if armor is not None and armor.durability is not None:
+            armor_status = f"내구 {armor.durability}/{armor.definition.max_durability}"
+        else:
+            armor_status = "방어구 없음"
+        self.font_small.draw(1144, 17, armor_status, (235, 242, 255))
 
         if drag:
             self.item_images[drag.item_id].draw(drag.x, drag.y, 70, 70)
@@ -902,6 +909,8 @@ class GameUI:
             color = (255, 125, 115) if toast_error else (255, 237, 176)
             p2.draw_rectangle(376, 655, 904, 700, 28, 24, 22, 220, True)
             self.font.draw(405, 677, toast, color)
+        if hovered_slot is not None:
+            self._draw_durability_tooltip(hovered_slot, mouse_x, mouse_y)
 
     def _draw_crafting(self) -> None:
         panel = self.CRAFTING_RECT
@@ -1035,6 +1044,76 @@ class GameUI:
         self.item_images[stack.item_id].draw(rect.cx, rect.cy, size, size)
         if stack.count > 1:
             self.font_small.draw(rect.right - 24, rect.bottom + 12, str(stack.count), (255, 255, 255))
+        ratio = stack.durability_ratio
+        if ratio is not None:
+            bar_left = rect.left + 5
+            bar_right = rect.right - 5
+            bar_bottom = rect.bottom + 3
+            bar_top = bar_bottom + 6
+            if ratio > 0.5:
+                color = (80, 201, 104)
+            elif ratio > 0.25:
+                color = (232, 167, 62)
+            else:
+                color = (218, 67, 72)
+            p2.draw_rectangle(
+                bar_left - 1,
+                bar_bottom - 1,
+                bar_right + 1,
+                bar_top + 1,
+                20,
+                23,
+                22,
+                235,
+                True,
+            )
+            if ratio > 0:
+                p2.draw_rectangle(
+                    bar_left,
+                    bar_bottom,
+                    bar_left + (bar_right - bar_left) * ratio,
+                    bar_top,
+                    *color,
+                    255,
+                    True,
+                )
+
+    def _draw_durability_tooltip(
+        self, ref: SlotRef, mouse_x: float, mouse_y: float
+    ) -> None:
+        stack = self.model.get(ref)
+        if stack is None or stack.durability is None:
+            return
+        maximum = stack.definition.max_durability
+        text = f"{stack.definition.label} · 내구도 {stack.durability}/{maximum}"
+        width = max(178.0, 16.0 + len(text) * 9.0)
+        left = min(max(mouse_x + 14.0, 8.0), WINDOW_WIDTH - width - 8.0)
+        bottom = mouse_y + 16.0
+        if bottom + 34.0 > WINDOW_HEIGHT:
+            bottom = mouse_y - 42.0
+        p2.draw_rectangle(
+            left,
+            bottom,
+            left + width,
+            bottom + 32.0,
+            24,
+            27,
+            25,
+            242,
+            True,
+        )
+        p2.draw_rectangle(
+            left,
+            bottom,
+            left + width,
+            bottom + 32.0,
+            220,
+            203,
+            160,
+            255,
+            False,
+        )
+        self.font_small.draw(left + 9.0, bottom + 9.0, text, (255, 241, 204))
 
     def draw_equipped_world_tool(
         self,
@@ -1045,7 +1124,7 @@ class GameUI:
         y: float | None = None,
         display_scale: float = 1.0,
     ) -> None:
-        """Draw equipped tools at rest and animate vertical tool-use arcs."""
+        """Draw held items and one unified front/back action arc."""
         stack = self.model.tool_slot
         if stack is None:
             return
@@ -1077,8 +1156,7 @@ class GameUI:
 
         definition = ITEMS[stack.item_id]
         if (
-            player.direction not in ("up", "down")
-            or player.state not in ("axe", "mine", "fish")
+            player.state not in ("attack", "axe", "mine", "fish")
             or definition.action != player.state
         ):
             return
@@ -1100,6 +1178,10 @@ class GameUI:
                 ((28.0, 100.0, -0.34), (38.0, 89.0, 0.02), (45.0, 78.0, 0.38), (32.0, 92.0, 0.04)),
                 68,
             ),
+            "attack": (
+                ((39.0, 101.0, 0.72), (24.0, 88.0, 0.24), (-8.0, 62.0, -0.70), (29.0, 86.0, 0.12)),
+                66,
+            ),
         }
         back_paths = {
             "axe": (
@@ -1114,12 +1196,21 @@ class GameUI:
                 ((-35.0, 100.0, 0.34), (-42.0, 89.0, -0.02), (-47.0, 78.0, -0.38), (-36.0, 92.0, -0.04)),
                 68,
             ),
+            "attack": (
+                ((-45.0, 101.0, -0.72), (-34.0, 88.0, -0.24), (42.0, 62.0, 0.70), (-35.0, 86.0, -0.12)),
+                66,
+            ),
         }
         path, size = (back_paths if is_behind else front_paths)[player.state]
         offset_x, offset_y, rotation = path[phase]
+        flip = "h" if is_behind else ""
+        if player.direction == "left":
+            offset_x = -offset_x
+            rotation = -rotation
+            flip = "h"
         image.composite_draw(
             rotation,
-            "h" if is_behind else "",
+            flip,
             draw_x + offset_x * display_scale,
             draw_y + offset_y * display_scale,
             size * display_scale,
@@ -1147,6 +1238,7 @@ class Game:
         self.world_entities: dict[str, list[WorldEntity]] = {}
         self.enemies: dict[str, list[EnemyAI]] = {}
         self.projectiles: dict[str, list[ThrownProjectile]] = {}
+        self.species_affinity = {species: 0 for species in SPECIES_LABELS}
         self.map_data: MapData
         self.map_background: p2.Image | None
         self.camera_x = 0.0
@@ -1154,6 +1246,7 @@ class Game:
         self.camera_zoom = CAMERA_ZOOM
         self.transition_armed = False
         self.ending_timer = 0.0
+        self.ending_variant = ""
         self.running = True
         self.inventory_open = False
         self.crafting_open = False
@@ -1171,7 +1264,43 @@ class Game:
         self.toast_error = error
         self.toast_timer = seconds
 
+    def _adjust_species_affinity(self, species: str, amount: int) -> int:
+        current = self.species_affinity[species]
+        updated = min(max(current + amount, 0), AFFINITY_MAX)
+        self.species_affinity[species] = updated
+        return updated
+
+    def _wear_equipped_item(
+        self, ref: SlotRef, amount: int
+    ) -> tuple[bool, int | None, str]:
+        stack = self.model.get(ref)
+        if stack is None or stack.durability is None:
+            return False, None, ""
+        label = stack.definition.label
+        broke = stack.lose_durability(amount)
+        remaining = stack.durability
+        if broke:
+            self.model.take(ref)
+        return broke, remaining, label
+
     def damage_player(self, amount: float) -> float:
+        armor = self.model.armor_slot
+        if armor is not None and armor.durability is not None:
+            maximum = armor.definition.max_durability
+            broke, remaining, label = self._wear_equipped_item(
+                SlotRef.armor(), 2
+            )
+            if broke:
+                self.show_toast(
+                    f"{label}이(가) 공격을 막고 파괴되었습니다 · HP 피해 없음",
+                    error=True,
+                )
+            else:
+                self.show_toast(
+                    f"{label}이(가) 공격을 막았습니다 · 내구도 {remaining}/{maximum}",
+                    error=True,
+                )
+            return 0.0
         mitigated = max(1.0, amount - self.model.defense)
         damage_taken = self.player.take_damage(mitigated)
         if damage_taken <= 0:
@@ -1265,6 +1394,30 @@ class Game:
             return
         if tool.action and self.player.start_action(tool.action):
             labels = {"attack": "공격", "axe": "도끼질", "mine": "채광", "fish": "낚시"}
+            if tool.action == "attack" and tool.item_id in MELEE_DAMAGE:
+                enemy = self._nearest_melee_enemy()
+                if enemy is not None:
+                    damage = enemy.take_damage(MELEE_DAMAGE[tool.item_id])
+                    durability_text = ""
+                    if tool.item_id in ("wooden_sword", "stone_sword"):
+                        broke, remaining, label = self._wear_equipped_item(
+                            SlotRef.tool(), 4
+                        )
+                        durability_text = (
+                            f" · {label} 파괴"
+                            if broke
+                            else f" · 내구도 {remaining}/{tool.max_durability}"
+                        )
+                    affinity = self._adjust_species_affinity(
+                        enemy.animal, -AFFINITY_LOSS_PER_HIT
+                    )
+                    self.show_toast(
+                        f"{self._enemy_label(enemy)} 근접 명중 · {damage} 피해 · "
+                        f"호감도 -{AFFINITY_LOSS_PER_HIT} ({affinity}/100)"
+                        f"{durability_text}",
+                        seconds=1.7,
+                    )
+                    return
             self.show_toast(f"{tool.label}: {labels.get(tool.action, tool.action)}")
 
     def _use_equipped_with_e(self) -> None:
@@ -1293,6 +1446,35 @@ class Game:
 
     def _current_projectiles(self) -> list[ThrownProjectile]:
         return self.projectiles.setdefault(self.map_data.name, [])
+
+    def _nearest_melee_enemy(self) -> EnemyAI | None:
+        direction_vectors = {
+            "up": (0.0, 1.0),
+            "down": (0.0, -1.0),
+            "left": (-1.0, 0.0),
+            "right": (1.0, 0.0),
+        }
+        facing_x, facing_y = direction_vectors[self.player.direction]
+        nearest: EnemyAI | None = None
+        nearest_distance = math.inf
+        for enemy in self._current_enemies():
+            if not enemy.alive:
+                continue
+            dx = enemy.x - self.player.x
+            dy = enemy.y - self.player.y
+            distance = math.hypot(dx, dy)
+            if distance <= 0:
+                alignment = 1.0
+            else:
+                alignment = (dx * facing_x + dy * facing_y) / distance
+            if (
+                distance * self.camera_zoom <= 145.0
+                and alignment >= 0.15
+                and distance < nearest_distance
+            ):
+                nearest = enemy
+                nearest_distance = distance
+        return nearest
 
     def _equipped_throwable_id(self) -> str | None:
         stack = self.model.tool_slot
@@ -1359,6 +1541,7 @@ class Game:
                 target_y,
                 max(0.18, distance / world_speed),
                 PROJECTILE_ARC_SCREEN_HEIGHT / self.camera_zoom,
+                thrown_stack.durability,
             )
         )
         self.show_toast(f"{ITEMS[item_id].label}을(를) 던졌습니다", seconds=1.3)
@@ -1558,9 +1741,24 @@ class Game:
         if required_action and not self.player.start_action(required_action):
             return
 
+        tool_broke = False
+        broken_label = ""
+        remaining_durability: int | None = None
+        if required_action:
+            tool_broke, remaining_durability, broken_label = (
+                self._wear_equipped_item(SlotRef.tool(), 4)
+            )
+
         entity.hp -= 1
         if entity.hp > 0:
-            self.show_toast(f"{label}: {entity.hp}번 더 채집해야 합니다")
+            durability_text = (
+                f" · {broken_label} 파괴"
+                if tool_broke
+                else f" · 내구도 {remaining_durability}"
+            )
+            self.show_toast(
+                f"{label}: {entity.hp}번 더 채집해야 합니다{durability_text}"
+            )
             return
 
         entity.visible = False
@@ -1570,7 +1768,24 @@ class Game:
             item_id, count, rect.left + rect.width / 2, rect.bottom
         )
         suffix = f" · {remainder}개는 바닥에 떨어졌습니다" if remainder else ""
-        self.show_toast(f"{label}을(를) 수확해 {ITEMS[item_id].label} {collected}개 획득{suffix}")
+        durability_text = f" · {broken_label} 파괴" if tool_broke else ""
+        self.show_toast(
+            f"{label}을(를) 수확해 {ITEMS[item_id].label} {collected}개 획득"
+            f"{suffix}{durability_text}"
+        )
+
+    def _claim_event_reward(self, entity: WorldEntity, reward: int) -> str:
+        species = MAP_SPECIES.get(self.map_data.name)
+        if species is None or reward <= 0 or entity.reward_claimed:
+            return ""
+        entity.reward_claimed = True
+        previous = self.species_affinity[species]
+        updated = self._adjust_species_affinity(species, reward)
+        gained = updated - previous
+        return (
+            f" · {SPECIES_LABELS[species]} 호감도 +{gained} "
+            f"({updated}/{AFFINITY_MAX})"
+        )
 
     def _activate_event(self, entity: WorldEntity) -> None:
         event_type = entity.definition.entity_type
@@ -1592,13 +1807,15 @@ class Game:
         if event_type == "generator_switch":
             entity.is_on = not entity.is_on
             state_label = "켜짐" if entity.is_on else "꺼짐"
-            self.show_toast(f"발전기 {state_label} · 보상 {reward}")
+            reward_text = self._claim_event_reward(entity, reward)
+            self.show_toast(f"발전기 {state_label}{reward_text}")
             return
 
         entity.completed = True
         if entity.definition.alternate_sprite_path is None:
             entity.visible = False
-        self.show_toast(f"{label} 완료 · 보상 {reward}")
+        reward_text = self._claim_event_reward(entity, reward)
+        self.show_toast(f"{label} 완료{reward_text}")
 
     def _update_entity_timers(self, dt: float) -> None:
         for entities in self.world_entities.values():
@@ -1634,14 +1851,20 @@ class Game:
 
     @staticmethod
     def _enemy_label(enemy: EnemyAI) -> str:
-        return {"crow": "까마귀", "wolf": "늑대", "bear": "곰"}[enemy.animal]
+        return SPECIES_LABELS[enemy.animal]
 
     def _land_projectile(
         self, projectile: ThrownProjectile, x: float, y: float
-    ) -> None:
+    ) -> bool:
+        durability = projectile.durability
+        if projectile.item_id in ("wooden_spear", "stone_spear"):
+            assert durability is not None
+            durability = max(0, durability - 3)
+            if durability == 0:
+                return True
         self.world_drops.setdefault(self.map_data.name, []).append(
             WorldDrop(
-                ItemStack(projectile.item_id, 1),
+                ItemStack(projectile.item_id, 1, durability),
                 x,
                 y,
                 pickup_enabled=False,
@@ -1651,6 +1874,7 @@ class Game:
                 ),
             )
         )
+        return False
 
     def _update_projectiles(self, dt: float) -> None:
         projectiles = self._current_projectiles()
@@ -1675,26 +1899,57 @@ class Game:
                     break
             if hit_enemy is not None:
                 damage = hit_enemy.take_damage(PROJECTILE_DAMAGE[projectile.item_id])
+                affinity = self._adjust_species_affinity(
+                    hit_enemy.animal, -AFFINITY_LOSS_PER_HIT
+                )
                 projectiles.remove(projectile)
-                self._land_projectile(projectile, hit_enemy.x, hit_enemy.y)
+                spear_broke = self._land_projectile(
+                    projectile, hit_enemy.x, hit_enemy.y
+                )
+                durability_text = (
+                    " · 창 파괴"
+                    if spear_broke
+                    else (
+                        f" · 창 내구도 {projectile.durability - 3}"
+                        if projectile.item_id in ("wooden_spear", "stone_spear")
+                        else ""
+                    )
+                )
                 label = self._enemy_label(hit_enemy)
                 if hit_enemy.alive:
                     self.show_toast(
-                        f"{label} 명중 · {damage} 피해 · HP {hit_enemy.hp}/{hit_enemy.max_hp}",
+                        f"{label} 명중 · {damage} 피해 · HP {hit_enemy.hp}/{hit_enemy.max_hp} · "
+                        f"호감도 -{AFFINITY_LOSS_PER_HIT} ({affinity}/100)"
+                        f"{durability_text}",
                         seconds=1.7,
                     )
                 else:
-                    self.show_toast(f"{label} 명중 · {damage} 피해 · 처치", seconds=1.7)
+                    self.show_toast(
+                        f"{label} 명중 · {damage} 피해 · 처치 · "
+                        f"호감도 -{AFFINITY_LOSS_PER_HIT} ({affinity}/100)"
+                        f"{durability_text}",
+                        seconds=1.7,
+                    )
                 continue
             if projectile.landed:
                 projectiles.remove(projectile)
-                self._land_projectile(
+                spear_broke = self._land_projectile(
                     projectile, projectile.target_x, projectile.target_y
                 )
+                if spear_broke:
+                    self.show_toast("창이 착탄 충격으로 파괴되었습니다", error=True)
 
     def _update_enemies(self, dt: float) -> None:
         for enemy in self._current_enemies():
-            enemy.update(dt, self.map_data)
+            damage = enemy.update(
+                dt,
+                self.map_data,
+                self.player,
+                self.species_affinity[enemy.animal],
+                self.camera_zoom,
+            )
+            if damage > 0:
+                self.damage_player(damage)
 
     def _dynamic_collisions(self) -> tuple[WorldRect, ...]:
         return tuple(
@@ -1796,7 +2051,7 @@ class Game:
             if distance > pickup_radius:
                 continue
             original_count = drop.stack.count
-            remainder = self.model.add_item(drop.stack.item_id, original_count)
+            remainder = self.model.add_stack(drop.stack)
             collected = original_count - remainder
             if collected == 0:
                 continue
@@ -1903,6 +2158,16 @@ class Game:
             (y - WINDOW_HEIGHT / 2) / self.camera_zoom + self.camera_y,
         )
 
+    def _affinity_ending(self) -> str:
+        values = tuple(self.species_affinity.values())
+        if all(value == AFFINITY_MAX for value in values):
+            return "완전한 화해 엔딩"
+        if all(value >= 80 for value in values):
+            return "공존 엔딩"
+        if any(value < 40 for value in values):
+            return "대립 엔딩"
+        return "불안한 휴전 엔딩"
+
     def _update_transition(self) -> None:
         transition = self.map_data.transition_at(self.player.x, self.player.y)
         if transition is None:
@@ -1911,10 +2176,16 @@ class Game:
         if not self.transition_armed:
             return
         if transition.ends_game:
-            self.ending_timer = 1.25
+            self.ending_variant = self._affinity_ending()
+            self.ending_timer = 1.75
             self.pressed.clear()
             self.player._set_state("idle")
-            self.show_toast("엔딩 통로에 도착했습니다. 게임을 종료합니다.", seconds=1.25)
+            values = self.species_affinity
+            self.show_toast(
+                f"{self.ending_variant} · 까마귀 {values['crow']} · "
+                f"늑대 {values['wolf']} · 곰 {values['bear']}",
+                seconds=1.75,
+            )
             self.transition_armed = False
             return
         if transition.target_map is None:
@@ -1951,7 +2222,8 @@ class Game:
         key = (animal, state)
         image = self._animal_image_cache.get(key)
         if image is None:
-            filename = f"{animal}_{state}.png"
+            asset_state = "walk" if animal == "crow" and state == "attack" else state
+            filename = f"{animal}_{asset_state}.png"
             path = ANIMAL_ASSET_ROOT / animal.capitalize() / filename
             image = p2.load_image(str(path))
             self._animal_image_cache[key] = image
@@ -2029,6 +2301,69 @@ class Game:
         self.ui.item_images[projectile.item_id].composite_draw(
             rotation, "", screen_x, screen_y, size, size
         )
+
+    def _draw_species_affinity(self) -> None:
+        panel_left = 12.0
+        panel_right = 216.0
+        panel_bottom = 483.0
+        panel_top = 607.0
+        p2.draw_rectangle(
+            panel_left,
+            panel_bottom,
+            panel_right,
+            panel_top,
+            18,
+            23,
+            22,
+            218,
+            True,
+        )
+        self.ui.font_small.draw(19, 589, "종 호감도", (255, 238, 205))
+        rows = (("crow", 558.0), ("wolf", 530.0), ("bear", 502.0))
+        for species, bottom in rows:
+            value = self.species_affinity[species]
+            relationship = affinity_relationship(value)
+            color = AFFINITY_COLORS[relationship]
+            image = self._animal_image(species, "idle")
+            source_bottom = image.h - 256
+            image.clip_draw(
+                0,
+                source_bottom,
+                256,
+                256,
+                29,
+                bottom + 9,
+                28,
+                28,
+            )
+            self.ui.font_small.draw(
+                43, bottom + 3, SPECIES_LABELS[species], (245, 231, 198)
+            )
+            bar_left = 101.0
+            bar_right = 210.0
+            bar_top = bottom + 16.0
+            p2.draw_rectangle(
+                bar_left, bottom, bar_right, bar_top, 40, 42, 40, 255, True
+            )
+            fill_right = bar_left + (bar_right - bar_left) * value / AFFINITY_MAX
+            if fill_right > bar_left:
+                p2.draw_rectangle(
+                    bar_left, bottom, fill_right, bar_top, *color, 255, True
+                )
+            p2.draw_rectangle(
+                bar_left,
+                bottom,
+                bar_right,
+                bar_top,
+                235,
+                224,
+                194,
+                255,
+                False,
+            )
+            self.ui.font_small.draw(
+                166, bottom + 2, f"{value}/100", (255, 255, 255)
+            )
 
     def _draw_aim_indicator(self) -> None:
         if (
@@ -2216,12 +2551,21 @@ class Game:
         p2.draw_rectangle(12, 678, 216, 710, 20, 25, 23, 205, True)
         self.ui.font.draw(24, 690, self.map_data.label, (255, 236, 183))
         self.ui.draw_status_bars(self.player)
+        self._draw_species_affinity()
+        hovered_slot = None
+        if not self.crafting_open:
+            hovered_slot = self.ui.slot_at(
+                self.mouse_screen_x, self.mouse_screen_y, self.inventory_open
+            )
         self.ui.draw(
             self.inventory_open,
             self.crafting_open,
             self.drag,
             self.toast,
             self.toast_error,
+            hovered_slot,
+            self.mouse_screen_x,
+            self.mouse_screen_y,
         )
         if present:
             p2.update_canvas()
