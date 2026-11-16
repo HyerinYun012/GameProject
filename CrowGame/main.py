@@ -100,6 +100,13 @@ PLACED_UTILITY_WORLD_SIZES = {
 }
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 FRUIT_TREE_UNRIPE_SPRITE = ASSET_DIR / "fruit_tree_unripe.png"
+AWARENESS_ICON_PATHS = {
+    "suspicious": ASSET_DIR / "ui" / "suspicion_question.png",
+    "searching": ASSET_DIR / "ui" / "suspicion_question.png",
+    "alerted": ASSET_DIR / "ui" / "alert_exclamation.png",
+}
+AWARENESS_ICON_SCREEN_SIZE = 58.0
+AWARENESS_ICON_CENTER_OFFSET = 52.0
 ANIMAL_ASSET_ROOT = (
     Path(__file__).resolve().parent.parent / "Assets" / "Sprites" / "Animals"
 )
@@ -1051,6 +1058,7 @@ class GameUI:
         self.font_small = p2.load_font(str(font_regular), 15)
         self.font = p2.load_font(str(font_bold), 18)
         self.font_title = p2.load_font(str(font_bold), 23)
+        self.font_game_over = p2.load_font(str(font_bold), 42)
 
     @staticmethod
     def _source_to_screen(panel: Rect, source_w: float, source_h: float, sx: float, sy: float) -> tuple[float, float]:
@@ -1497,6 +1505,10 @@ class GameUI:
 
 
 class Game:
+    GAME_OVER_PANEL = Rect(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2, 540, 300)
+    RETRY_BUTTON = Rect(WINDOW_WIDTH / 2 - 112, WINDOW_HEIGHT / 2 - 72, 190, 58)
+    QUIT_BUTTON = Rect(WINDOW_WIDTH / 2 + 112, WINDOW_HEIGHT / 2 - 72, 190, 58)
+
     def __init__(self) -> None:
         if not CHARACTER_SHEET.exists():
             raise FileNotFoundError(
@@ -1504,13 +1516,21 @@ class Game:
                 "Run: python CrowGame/tools/extract_character_sheet.py, then "
                 "powershell -ExecutionPolicy Bypass -File CrowGame/tools/style_character_sheet.ps1"
             )
-        self.model = InventoryModel.demo()
-        self.player = Player(p2.load_image(str(CHARACTER_SHEET)))
-        self.ui = GameUI(self.model)
+        self._player_sprite_sheet = p2.load_image(str(CHARACTER_SHEET))
         self._map_cache: dict[str, MapData] = {}
         self._background_cache: dict[str, p2.Image] = {}
         self._world_image_cache: dict[Path, p2.Image] = {}
         self._animal_image_cache: dict[tuple[str, str], p2.Image] = {}
+        self._reset_game_state()
+
+    def _reset_game_state(self) -> None:
+        """Restore every mutable play-session value to a brand-new game."""
+        self.model = InventoryModel.demo()
+        self.player = Player(self._player_sprite_sheet)
+        if hasattr(self, "ui"):
+            self.ui.model = self.model
+        else:
+            self.ui = GameUI(self.model)
         self.world_drops: dict[str, list[WorldDrop]] = {}
         self.placed_utilities: dict[str, list[PlacedUtility]] = {}
         self.world_entities: dict[str, list[WorldEntity]] = {}
@@ -1526,6 +1546,7 @@ class Game:
         self.ending_timer = 0.0
         self.ending_variant = ""
         self.running = True
+        self.game_over = False
         self.inventory_open = False
         self.crafting_open = False
         self.pressed: set[int] = set()
@@ -1536,6 +1557,27 @@ class Game:
         self.toast_error = False
         self.toast_timer = 5.0
         self._load_map(FIRST_MAP, "player_start")
+
+    def restart_game(self) -> None:
+        self._reset_game_state()
+
+    def _enter_game_over(self) -> None:
+        if getattr(self, "game_over", False):
+            return
+        self.game_over = True
+        self.pressed.clear()
+        self.inventory_open = False
+        self.crafting_open = False
+        self.drag = None
+
+    def _activate_game_over_button(self, x: float, y: float) -> bool:
+        if self.RETRY_BUTTON.contains(x, y):
+            self.restart_game()
+            return True
+        if self.QUIT_BUTTON.contains(x, y):
+            self.running = False
+            return True
+        return False
 
     def show_toast(self, message: str, *, error: bool = False, seconds: float = 2.2) -> None:
         self.toast = message
@@ -1584,6 +1626,7 @@ class Game:
         if damage_taken <= 0:
             return 0.0
         if self.player.dead:
+            self._enter_game_over()
             self.show_toast("HP가 모두 소진되어 쓰러졌습니다", error=True)
         else:
             self.show_toast("공격을 받아 HP가 감소했습니다", error=True)
@@ -1593,6 +1636,20 @@ class Game:
         for event in p2.get_events():
             if event.type == p2.SDL_QUIT:
                 self.running = False
+            elif self.game_over:
+                if event.type == p2.SDL_KEYDOWN and event.key == p2.SDLK_ESCAPE:
+                    self.running = False
+                elif event.type == p2.SDL_MOUSEMOTION:
+                    self.mouse_screen_x = event.x
+                    self.mouse_screen_y = WINDOW_HEIGHT - 1 - event.y
+                elif (
+                    event.type == p2.SDL_MOUSEBUTTONDOWN
+                    and event.button == p2.SDL_BUTTON_LEFT
+                ):
+                    x, y = event.x, WINDOW_HEIGHT - 1 - event.y
+                    self.mouse_screen_x = x
+                    self.mouse_screen_y = y
+                    self._activate_game_over_button(x, y)
             elif event.type == p2.SDL_KEYDOWN:
                 self._key_down(event)
             elif event.type == p2.SDL_KEYUP:
@@ -1626,6 +1683,10 @@ class Game:
     def _key_down(self, event: object) -> None:
         key = event.key
         repeated = bool(getattr(event, "repeat", 0))
+        if getattr(self, "game_over", False):
+            if key == p2.SDLK_ESCAPE:
+                self.running = False
+            return
         if key in (p2.SDLK_w, p2.SDLK_a, p2.SDLK_s, p2.SDLK_d, p2.SDLK_LSHIFT, p2.SDLK_RSHIFT):
             self.pressed.add(key)
             return
@@ -1650,10 +1711,8 @@ class Game:
             self.damage_player(10.0)
         elif key == p2.SDLK_k:
             if self.player.take_damage(self.player.hp) > 0:
-                self.show_toast("쓰러졌습니다. R 키로 일어나기")
-        elif key == p2.SDLK_r:
-            self.player.revive()
-            self.show_toast("다시 일어났습니다")
+                self._enter_game_over()
+                self.show_toast("HP가 모두 소진되어 쓰러졌습니다", error=True)
 
     def _use_tool(self) -> None:
         tool = self.model.equipped_tool_definition
@@ -2585,6 +2644,13 @@ class Game:
         self.show_toast(f"{self.map_data.label}(으)로 이동했습니다")
 
     def update(self, dt: float) -> None:
+        if self.player.dead and not self.game_over:
+            self._enter_game_over()
+        if self.game_over:
+            # Let the fall animation finish beneath the modal, while every
+            # other mutable world system remains frozen.
+            self.player.update(dt, set())
+            return
         self._update_entity_timers(dt)
         if self.ending_timer > 0:
             self.ending_timer -= dt
@@ -2593,10 +2659,11 @@ class Game:
         else:
             self.player.update(dt, self.pressed, self._resolve_player_movement)
             self._update_enemies(dt)
-            self._update_projectiles(dt)
-            self._update_camera()
-            self._auto_pickup_world_items()
-            self._update_transition()
+            if not self.game_over:
+                self._update_projectiles(dt)
+                self._update_camera()
+                self._auto_pickup_world_items()
+                self._update_transition()
         if self.toast_timer > 0:
             self.toast_timer -= dt
             if self.toast_timer <= 0:
@@ -2684,19 +2751,13 @@ class Game:
                 255,
                 True,
             )
-            indicator = ""
-            indicator_color = (255, 238, 145)
-            if enemy.awareness in ("suspicious", "searching"):
-                indicator = "?"
-            elif enemy.awareness == "alerted":
-                indicator = "!"
-                indicator_color = (255, 102, 84)
-            if indicator:
-                self.ui.font.draw(
-                    screen_x - 5,
-                    bar_bottom + 14,
-                    indicator,
-                    indicator_color,
+            indicator_path = AWARENESS_ICON_PATHS.get(enemy.awareness)
+            if indicator_path is not None:
+                self._world_image(indicator_path).draw(
+                    screen_x,
+                    bar_bottom + AWARENESS_ICON_CENTER_OFFSET,
+                    AWARENESS_ICON_SCREEN_SIZE,
+                    AWARENESS_ICON_SCREEN_SIZE,
                 )
 
     def _draw_projectile(self, projectile: ThrownProjectile) -> None:
@@ -2848,6 +2909,80 @@ class Game:
             draw_height,
         )
 
+    def _draw_game_over(self) -> None:
+        panel = self.GAME_OVER_PANEL
+        p2.draw_rectangle(
+            0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 7, 9, 12, 185, True
+        )
+        p2.draw_rectangle(
+            panel.left - 5,
+            panel.bottom - 5,
+            panel.right + 5,
+            panel.top + 5,
+            139,
+            48,
+            49,
+            255,
+            True,
+        )
+        p2.draw_rectangle(
+            panel.left,
+            panel.bottom,
+            panel.right,
+            panel.top,
+            28,
+            25,
+            27,
+            250,
+            True,
+        )
+        self.ui.font_game_over.draw(
+            panel.cx - 119, panel.top - 82, "게임 오버", (255, 112, 104)
+        )
+        self.ui.font.draw(
+            panel.cx - 139,
+            panel.top - 126,
+            "HP가 모두 소진되어 쓰러졌습니다",
+            (238, 225, 207),
+        )
+
+        for rect, label, primary in (
+            (self.RETRY_BUTTON, "다시 하기", True),
+            (self.QUIT_BUTTON, "종료", False),
+        ):
+            hovered = rect.contains(self.mouse_screen_x, self.mouse_screen_y)
+            if primary:
+                color = (185, 67, 61) if hovered else (153, 53, 50)
+            else:
+                color = (91, 91, 91) if hovered else (67, 67, 69)
+            p2.draw_rectangle(
+                rect.left,
+                rect.bottom,
+                rect.right,
+                rect.top,
+                *color,
+                255,
+                True,
+            )
+            p2.draw_rectangle(
+                rect.left,
+                rect.bottom,
+                rect.right,
+                rect.top,
+                242,
+                222,
+                194,
+                255,
+                False,
+            )
+            label_offset = 39 if primary else 19
+            self.ui.font_title.draw(
+                rect.cx - label_offset,
+                rect.cy - 9,
+                label,
+                (255, 244, 224),
+            )
+
     def draw(self, *, present: bool = True) -> None:
         p2.clear_canvas()
         p2.draw_rectangle(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1, 12, 18, 21, 255, True)
@@ -2987,6 +3122,8 @@ class Game:
             self.mouse_screen_x,
             self.mouse_screen_y,
         )
+        if self.game_over:
+            self._draw_game_over()
         if present:
             p2.update_canvas()
 

@@ -18,6 +18,8 @@ from CrowGame.game_model import (  # noqa: E402
     SlotRef,
 )
 from CrowGame.main import (  # noqa: E402
+    AWARENESS_ICON_PATHS,
+    AWARENESS_ICON_SCREEN_SIZE,
     AI_SENSES,
     ANIMAL_ANIMATIONS,
     ANIMAL_STATS,
@@ -57,6 +59,10 @@ def make_game() -> Game:
     game.toast = ""
     game.toast_error = False
     game.toast_timer = 0.0
+    game.running = True
+    game.game_over = False
+    game.pressed = set()
+    game.ending_timer = 0.0
     game.camera_zoom = 1.0
     game.map_data = load_map_data(FIRST_MAP)
     game.camera_x = game.player.x
@@ -200,6 +206,79 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual(MAX_HP, player.hp)
         self.assertFalse(player.dead)
 
+    def test_fatal_damage_enters_game_over_and_clears_active_input(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        game.inventory_open = True
+        game.crafting_open = True
+        game.pressed = {p2.SDLK_w, p2.SDLK_LSHIFT}
+
+        self.assertEqual(MAX_HP, game.damage_player(MAX_HP))
+
+        self.assertTrue(game.game_over)
+        self.assertTrue(game.player.dead)
+        self.assertEqual(set(), game.pressed)
+        self.assertFalse(game.inventory_open)
+        self.assertFalse(game.crafting_open)
+
+    def test_restart_restores_every_mutable_gameplay_collection(self) -> None:
+        game = make_game()
+        game._player_sprite_sheet = None
+        game._map_cache = {}
+        game._background_cache = {}
+        game.ui = SimpleNamespace(model=game.model)
+        initial_fruit = InventoryModel.demo().item_count("fruit")
+
+        game.model.add_item("fruit", 7)
+        game.player.take_damage(game.player.hp)
+        game.world_drops["old_map.json"] = [
+            WorldDrop(ItemStack("stone"), 10.0, 20.0)
+        ]
+        game.placed_utilities["old_map.json"] = [
+            PlacedUtility("campfire", 30.0, 40.0)
+        ]
+        game.enemies["old_map.json"] = [EnemyAI.create("bear", 50.0, 60.0)]
+        game.projectiles["old_map.json"] = []
+        game.species_affinity = {"crow": 100, "wolf": 80, "bear": 40}
+        game.ending_variant = "대립 엔딩"
+        game.game_over = True
+
+        game.restart_game()
+
+        self.assertIs(game.ui.model, game.model)
+        self.assertEqual(initial_fruit, game.model.item_count("fruit"))
+        self.assertEqual(MAX_HP, game.player.hp)
+        self.assertEqual(MAX_SP, game.player.sp)
+        self.assertFalse(game.player.dead)
+        self.assertFalse(game.game_over)
+        self.assertEqual(FIRST_MAP, game.map_data.name)
+        self.assertNotIn("old_map.json", game.world_drops)
+        self.assertNotIn("old_map.json", game.placed_utilities)
+        self.assertNotIn("old_map.json", game.enemies)
+        self.assertNotIn("old_map.json", game.projectiles)
+        self.assertEqual({"crow": 0, "wolf": 0, "bear": 0}, game.species_affinity)
+        self.assertEqual("", game.ending_variant)
+
+    def test_game_over_buttons_retry_or_stop_the_game(self) -> None:
+        game = make_game()
+        restarted: list[bool] = []
+        game.restart_game = lambda: restarted.append(True)
+
+        self.assertTrue(
+            game._activate_game_over_button(
+                game.RETRY_BUTTON.cx, game.RETRY_BUTTON.cy
+            )
+        )
+        self.assertEqual([True], restarted)
+
+        self.assertTrue(
+            game._activate_game_over_button(
+                game.QUIT_BUTTON.cx, game.QUIT_BUTTON.cy
+            )
+        )
+        self.assertFalse(game.running)
+
     def test_player_healing_is_capped_at_max_hp(self) -> None:
         player = Player(sprite_sheet=None)
         player.hp = 97.0
@@ -236,6 +315,19 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual((4, 8.0, True), ANIMAL_ANIMATIONS["crow"]["idle"])
         self.assertEqual((6, 14.0, True), ANIMAL_ANIMATIONS["crow"]["walk"])
         self.assertEqual((6, 10.0, False), ANIMAL_ANIMATIONS["crow"]["death"])
+
+    def test_awareness_states_use_large_dedicated_icon_assets(self) -> None:
+        self.assertEqual(
+            AWARENESS_ICON_PATHS["suspicious"],
+            AWARENESS_ICON_PATHS["searching"],
+        )
+        self.assertNotEqual(
+            AWARENESS_ICON_PATHS["suspicious"],
+            AWARENESS_ICON_PATHS["alerted"],
+        )
+        self.assertGreaterEqual(AWARENESS_ICON_SCREEN_SIZE, 56.0)
+        for path in set(AWARENESS_ICON_PATHS.values()):
+            self.assertTrue(path.exists(), path)
 
         crow = EnemyAI.create("crow", 0.0, 0.0)
         crow._set_state("walk")
