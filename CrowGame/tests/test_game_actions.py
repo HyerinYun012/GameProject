@@ -334,6 +334,34 @@ class GameActionTests(unittest.TestCase):
         self.assertEqual(enemy.max_hp, enemy.hp)
         self.assertEqual("idle", game.player.state)
 
+    def test_space_key_has_no_gameplay_action(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        enemy = EnemyAI.create("wolf", game.player.x + 50.0, game.player.y)
+        game.enemies[FIRST_MAP] = [enemy]
+        game.model.tool_slot = ItemStack("wooden_sword")
+
+        game._key_down(SimpleNamespace(key=p2.SDLK_SPACE, repeat=0))
+
+        self.assertEqual(enemy.max_hp, enemy.hp)
+        self.assertEqual("idle", game.player.state)
+
+    def test_e_key_still_performs_equipped_sword_attack(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        game.player.direction = "right"
+        enemy = EnemyAI.create("wolf", game.player.x + 50.0, game.player.y)
+        game.enemies[FIRST_MAP] = [enemy]
+        game.model.tool_slot = ItemStack("wooden_sword")
+
+        game._key_down(SimpleNamespace(key=p2.SDLK_e, repeat=0))
+
+        self.assertEqual(enemy.max_hp - 10, enemy.hp)
+        self.assertEqual("attack", game.player.state)
+        self.assertIn("근접 명중", game.toast)
+
     def test_mouse_drag_from_hotbar_moves_the_same_inventory_slot(self) -> None:
         game = make_game()
         game.model.slots[0] = ItemStack("wooden_axe")
@@ -838,7 +866,7 @@ class GameActionTests(unittest.TestCase):
         game.species_affinity["wolf"] = 50
         game.model.tool_slot = ItemStack("wooden_sword")
 
-        game._use_tool()
+        game._use_primary_attack()
 
         self.assertEqual(60, enemy.hp)
         self.assertEqual("hurt", enemy.state)
@@ -854,7 +882,7 @@ class GameActionTests(unittest.TestCase):
         game.enemies[FIRST_MAP] = [enemy]
         game.species_affinity["wolf"] = 50
 
-        game._use_tool()
+        game._use_primary_attack()
 
         self.assertEqual(65, enemy.hp)
         self.assertEqual("hurt", enemy.state)
@@ -879,7 +907,7 @@ class GameActionTests(unittest.TestCase):
         game = make_game()
         game.model.tool_slot = ItemStack("wooden_sword")
 
-        game._use_tool()
+        game._use_primary_attack()
 
         self.assertEqual(40, game.model.tool_slot.durability)
 

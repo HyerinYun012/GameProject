@@ -76,7 +76,7 @@ def main() -> None:
         game.player.state = "run"
         game.player.direction = "right"
         game.player.frame_index = 4
-        game.toast = "WASD 걷기 / Shift 달리기 / E·Space 장착 도구 사용 / Tab 인벤토리"
+        game.toast = "WASD 이동 / E 상호작용·도구 공격 / 좌클릭 공격·투척 / Tab"
         game.draw(present=False)
         capture(character_preview)
         p2.update_canvas()

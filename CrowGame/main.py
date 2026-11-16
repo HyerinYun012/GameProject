@@ -1532,7 +1532,7 @@ class Game:
         self.drag: DragState | None = None
         self.mouse_screen_x = WINDOW_WIDTH * 0.72
         self.mouse_screen_y = WINDOW_HEIGHT * 0.55
-        self.toast = "마우스: 조준/투척 | E: 상호작용 | Space: 도구 | Tab: 인벤토리"
+        self.toast = "좌클릭: 공격/투척 | E: 상호작용·도구 공격 | Tab: 인벤토리"
         self.toast_error = False
         self.toast_timer = 5.0
         self._load_map(FIRST_MAP, "player_start")
@@ -1612,7 +1612,8 @@ class Game:
                         self.drag = DragState(source, stack.item_id, x, y)
                     continue
                 if not self.inventory_open:
-                    self._throw_equipped_at_screen(x, y)
+                    if not self._throw_equipped_at_screen(x, y):
+                        self._use_primary_attack()
             elif event.type == p2.SDL_MOUSEMOTION:
                 x, y = event.x, WINDOW_HEIGHT - 1 - event.y
                 self._aim_at_screen(x, y)
@@ -1642,8 +1643,6 @@ class Game:
             if self.crafting_open:
                 self.inventory_open = False
             self.drag = None
-        elif key == p2.SDLK_SPACE:
-            self._use_tool()
         elif key == p2.SDLK_e:
             if not self._interact_world():
                 self._use_equipped_with_e()
@@ -1718,6 +1717,13 @@ class Game:
                     )
                     return
             self.show_toast(f"{tool.label}: {labels.get(tool.action, tool.action)}")
+
+    def _use_primary_attack(self) -> bool:
+        stack = self.model.tool_slot
+        if stack is not None and stack.item_id not in MELEE_DAMAGE:
+            return False
+        self._use_tool()
+        return True
 
     def _use_equipped_with_e(self) -> None:
         stack = self.model.tool_slot
