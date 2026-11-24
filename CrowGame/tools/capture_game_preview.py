@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from CrowGame.game_model import ItemStack, SlotRef
-from CrowGame.main import Game, WINDOW_HEIGHT, WINDOW_WIDTH
+from CrowGame.main import DIRECTIONS, Game, WINDOW_HEIGHT, WINDOW_WIDTH
 from CrowGame.tools.extract_character_sheet import write_rgba_png
 
 
@@ -54,7 +54,7 @@ def main() -> None:
     direction_previews = {
         (action, direction): generated / f"game_preview_{action}_{direction}.png"
         for action in ("attack", "axe", "mine", "fish")
-        for direction in ("down", "up", "right", "left")
+        for direction in DIRECTIONS
     }
     p2.open_canvas(WINDOW_WIDTH, WINDOW_HEIGHT)
     try:
@@ -75,7 +75,7 @@ def main() -> None:
         game.inventory_open = False
         game.player.state = "run"
         game.player.direction = "right"
-        game.player.frame_index = 4
+        game.player.frame_index = 3
         game.toast = "WASD 이동 / E 상호작용·도구 공격 / 좌클릭 공격·투척 / Tab"
         game.draw(present=False)
         capture(character_preview)
@@ -114,7 +114,16 @@ def main() -> None:
             "mine": "채광질",
             "fish": "낚시",
         }
-        direction_labels = {"down": "앞", "up": "뒤", "right": "오른쪽", "left": "왼쪽"}
+        direction_labels = {
+            "up": "북쪽",
+            "up_right": "북동쪽",
+            "right": "동쪽",
+            "down_right": "남동쪽",
+            "down": "남쪽",
+            "down_left": "남서쪽",
+            "left": "서쪽",
+            "up_left": "북서쪽",
+        }
         for (state, direction), destination in direction_previews.items():
             game.model.tool_slot = ItemStack(action_tools[state])
             game.player.state = state

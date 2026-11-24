@@ -56,10 +56,10 @@ except ImportError:  # pragma: no cover - exercised by the normal command file.
 
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
-FRAME_WIDTH = 32
-FRAME_HEIGHT = 48
-CHARACTER_WIDTH = 160
-CHARACTER_HEIGHT = 240
+FRAME_WIDTH = 80
+FRAME_HEIGHT = 72
+CHARACTER_WIDTH = 240
+CHARACTER_HEIGHT = 216
 MAX_HP = 100.0
 MAX_SP = 100.0
 SP_DRAIN_PER_SECOND = 25.0
@@ -111,21 +111,84 @@ ANIMAL_ASSET_ROOT = (
     Path(__file__).resolve().parent.parent / "Assets" / "Sprites" / "Animals"
 )
 GENERATED_ICON_DIR = Path(__file__).resolve().parent / "generated" / "icons"
+HELD_TOOL_ICON_PATHS = {
+    "stone_axe": ASSET_DIR / "stone-axe-held-pixel-v1.png",
+}
+HELD_STONE_AXE_MOTION = {
+    "idle": (
+        (0.0, 0.0, 0.00),
+        (0.0, 2.0, 0.03),
+        (0.0, 0.0, 0.00),
+        (0.0, -2.0, -0.03),
+    ),
+    "walk": (
+        (-3.0, -3.0, -0.07),
+        (3.0, 3.0, 0.05),
+        (3.0, -3.0, 0.07),
+        (-3.0, 3.0, -0.05),
+    ),
+    "run": (
+        (-6.0, -5.0, -0.12),
+        (6.0, 5.0, 0.09),
+        (6.0, -5.0, 0.12),
+        (-6.0, 5.0, -0.09),
+    ),
+}
 CHARACTER_SHEET = (
-    ASSET_DIR
-    / "Character Creation 32P"
-    / "Character Creation 32P"
-    / "Animations Adventurer.png"
+    Path(__file__).resolve().parent
+    / "sprite-preview"
+    / "dist"
+    / "assets"
+    / "adventurer-8dir-idle-walk-run-hurt-death-unified-v26.png"
 )
 
-SIDE_MOVE_X = (0, 32, 64, 96, 128, 176, 208, 240, 272)
-VERTICAL_MOVE_X = (0, 32, 64, 96, 128)
+DIRECTIONS = (
+    "up",
+    "up_right",
+    "right",
+    "down_right",
+    "down",
+    "down_left",
+    "left",
+    "up_left",
+)
+DIRECTION_VECTORS = {
+    "up": (0.0, 1.0),
+    "up_right": (math.sqrt(0.5), math.sqrt(0.5)),
+    "right": (1.0, 0.0),
+    "down_right": (math.sqrt(0.5), -math.sqrt(0.5)),
+    "down": (0.0, -1.0),
+    "down_left": (-math.sqrt(0.5), -math.sqrt(0.5)),
+    "left": (-1.0, 0.0),
+    "up_left": (-math.sqrt(0.5), math.sqrt(0.5)),
+}
+NORTH_FACING_DIRECTIONS = frozenset({"up_left", "up", "up_right"})
+WEST_FACING_DIRECTIONS = frozenset({"up_left", "left", "down_left"})
+
+
+def direction_from_vector(dx: float, dy: float, fallback: str = "down") -> str:
+    """Quantize a vector to the nearest of the character sheet's 8 directions."""
+    if math.isclose(dx, 0.0) and math.isclose(dy, 0.0):
+        return fallback
+    octant = round(math.atan2(dy, dx) / (math.pi / 4.0)) % 8
+    return (
+        "right",
+        "up_right",
+        "up",
+        "up_left",
+        "left",
+        "down_left",
+        "down",
+        "down_right",
+    )[octant]
+
+
 STATE_FPS = {
-    "idle": 3.0,
-    "walk": 9.0,
-    "run": 15.0,
-    "hurt": 11.0,
-    "death": 4.5,
+    "idle": 4.0,
+    "walk": 7.0,
+    "run": 10.0,
+    "hurt": 6.0,
+    "death": 6.0,
     "attack": 11.0,
     "axe": 10.0,
     "mine": 10.0,
@@ -706,44 +769,91 @@ def frames_at(row: int, xs: tuple[int, ...] | list[int], flip: str = "") -> tupl
     return tuple(SpriteFrame(x, row, flip) for x in xs)
 
 
+# Coordinates are shared with sprite-preview/dist/app.js. Each stored x value is
+# the visual centre of an 80x72 crop in the v26 sheet.
+DIRECTION_SHEET_META = {
+    "up": (0, 0),
+    "down": (0, 1),
+    "up_right": (1, 0),
+    "down_left": (1, 1),
+    "right": (2, 0),
+    "left": (2, 1),
+    "down_right": (3, 0),
+    "up_left": (3, 1),
+}
+STANDARD_FRAME_CENTERS = (
+    (260, 342, 425, 508),
+    (717, 800, 884, 971),
+    (1174, 1258, 1343, 1425),
+    (1628, 1712, 1798, 1884),
+)
+HURT_FRAME_CENTERS = (
+    (336, 436),
+    (794, 889),
+    (1250, 1346),
+    (1709, 1805),
+)
+DEATH_FRAME_CENTERS = (
+    (239, 312, 386, 462, 537),
+    (703, 773, 845, 918, 993),
+    (1158, 1227, 1300, 1376, 1452),
+    (1612, 1680, 1746, 1827, 1900),
+)
+
+
+def sheet_frames(
+    direction: str,
+    centers: tuple[tuple[int, ...], ...],
+    row_tops: tuple[int, int],
+) -> tuple[SpriteFrame, ...]:
+    group, row = DIRECTION_SHEET_META[direction]
+    return frames_at(
+        row_tops[row],
+        tuple(center - FRAME_WIDTH // 2 for center in centers[group]),
+    )
+
+
 IDLE_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
-    "down": frames_at(0, (0, 32, 64)),
-    # The source atlas stores the right-facing idle set before the left-facing set.
-    "right": frames_at(0, (96, 128, 176)),
-    "left": frames_at(0, (208, 240, 272)),
-    "up": (SpriteFrame(0, 192),),
+    direction: sheet_frames(direction, STANDARD_FRAME_CENTERS, (4, 76))
+    for direction in DIRECTIONS
+}
+WALK_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    direction: sheet_frames(direction, STANDARD_FRAME_CENTERS, (164, 236))
+    for direction in DIRECTIONS
+}
+# Backwards-compatible name used by existing tests and preview tooling.
+MOVE_FRAMES = WALK_FRAMES
+RUN_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    direction: sheet_frames(direction, STANDARD_FRAME_CENTERS, (321, 393))
+    for direction in DIRECTIONS
+}
+HURT_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    direction: sheet_frames(direction, HURT_FRAME_CENTERS, (477, 546))
+    for direction in DIRECTIONS
+}
+DEATH_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    direction: sheet_frames(direction, DEATH_FRAME_CENTERS, (626, 715))
+    for direction in DIRECTIONS
 }
 
-MOVE_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
-    "left": frames_at(48, SIDE_MOVE_X),
-    "right": frames_at(96, SIDE_MOVE_X),
-    "down": frames_at(144, VERTICAL_MOVE_X),
-    "up": frames_at(192, VERTICAL_MOVE_X),
-}
-
-# Front/back actions use the clean poses already established by the prototype.
-# Side actions are authored here from clean idle bodies plus procedural recoil;
-# no pre-existing side tool/action cells from the atlas are referenced.
-VERTICAL_TOOL_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
-    "down": frames_at(192, (176, 208, 240, 272)),
-    "up": frames_at(144, (176, 208, 240, 272)),
-}
-CUSTOM_SIDE_BODY_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
-    "right": frames_at(0, (96, 128, 176, 96)),
-    "left": frames_at(0, (208, 240, 272, 208)),
-}
-SIDE_ACTION_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
-    state: CUSTOM_SIDE_BODY_FRAMES
+# The replacement sheet intentionally has no tool-specific body rows. Tool
+# actions therefore reuse its matching 8-direction idle cycle while the actual
+# equipped icon supplies the four-phase swing/interaction arc.
+ACTION_BODY_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
+    state: {direction: IDLE_FRAMES[direction] for direction in DIRECTIONS}
     for state in ("attack", "axe", "mine", "fish")
 }
-
-ACTION_BODY_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
-    state: {
-        "down": VERTICAL_TOOL_FRAMES["down"],
-        "up": VERTICAL_TOOL_FRAMES["up"],
-        **side_frames,
-    }
-    for state, side_frames in SIDE_ACTION_FRAMES.items()
+VERTICAL_TOOL_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    direction: ACTION_BODY_FRAMES["attack"][direction]
+    for direction in ("down", "up")
+}
+CUSTOM_SIDE_BODY_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
+    direction: ACTION_BODY_FRAMES["attack"][direction]
+    for direction in ("right", "left")
+}
+SIDE_ACTION_FRAMES: dict[str, dict[str, tuple[SpriteFrame, ...]]] = {
+    state: ACTION_BODY_FRAMES[state]
+    for state in ("attack", "axe", "mine", "fish")
 }
 
 # Per-phase (x, y, rotation) paths for the actual equipped item icon. Left is
@@ -787,16 +897,8 @@ CUSTOM_SIDE_TOOL_PATHS = {
     ),
 }
 
-# Kept as a public alias for older preview/test code; only front/back bodies are
-# intentionally unified now.
+# Kept as a public alias for older preview/test code.
 UNIFIED_ACTION_FRAMES = VERTICAL_TOOL_FRAMES
-
-HURT_FRAMES: dict[str, tuple[SpriteFrame, ...]] = {
-    "down": frames_at(384, (0, 32, 64)),
-    "up": frames_at(432, (0, 32, 64)),
-    "right": frames_at(480, (0, 32, 64)),
-    "left": frames_at(528, (0, 32, 64)),
-}
 
 # Backwards-compatible public name used by tests and preview tooling.
 ATTACK_FRAMES = ACTION_BODY_FRAMES["attack"]
@@ -824,20 +926,16 @@ class Player:
     def _frames_for_state(self) -> tuple[SpriteFrame, ...]:
         if self.state == "idle":
             return IDLE_FRAMES[self.direction]
-        if self.state in ("walk", "run"):
-            return MOVE_FRAMES[self.direction]
+        if self.state == "walk":
+            return WALK_FRAMES[self.direction]
+        if self.state == "run":
+            return RUN_FRAMES[self.direction]
         if self.state == "hurt":
             return HURT_FRAMES[self.direction]
         if self.state in ("attack", "axe", "mine", "fish"):
             return ACTION_BODY_FRAMES[self.state][self.direction]
         if self.state == "death":
-            base = {
-                "left": IDLE_FRAMES["left"][0],
-                "right": IDLE_FRAMES["right"][0],
-                "down": IDLE_FRAMES["down"][0],
-                "up": IDLE_FRAMES["up"][0],
-            }[self.direction]
-            return (base, base, base, base)
+            return DEATH_FRAMES[self.direction]
 
         return IDLE_FRAMES[self.direction]
 
@@ -902,10 +1000,7 @@ class Player:
                     scale = 1.0 / math.sqrt(2.0)
                     dx *= scale
                     dy *= scale
-                if abs(dx) > 0 and (not dy or self.direction in ("left", "right")):
-                    self.direction = "right" if dx > 0 else "left"
-                elif dy:
-                    self.direction = "up" if dy > 0 else "down"
+                self.direction = direction_from_vector(dx, dy, self.direction)
 
                 run_requested = (
                     p2.SDLK_LSHIFT in pressed or p2.SDLK_RSHIFT in pressed
@@ -995,7 +1090,7 @@ class Player:
         )
 
     def _state_transform(self) -> tuple[float, float, float]:
-        """Author side-action recoil plus hurt/death motion in code."""
+        """Author side-action recoil; hurt/death motion lives in the v26 sheet."""
         if (
             self.state in ("attack", "axe", "mine", "fish")
             and self.direction in ("left", "right")
@@ -1006,24 +1101,6 @@ class Player:
             offset_y = (0.0, 3.0, -4.0, 0.0)[phase]
             rotation = (-0.08, 0.04, 0.13, 0.0)[phase] * side
             return offset_x, offset_y, rotation
-        if self.state == "hurt":
-            phase = min(self.frame_index, 2)
-            recoil = (14.0, -8.0, 0.0)[phase]
-            rotation = (-0.10, 0.06, 0.0)[phase]
-            if self.direction == "right":
-                return -recoil, 0.0, rotation
-            if self.direction == "left":
-                return recoil, 0.0, -rotation
-            if self.direction == "up":
-                return 0.0, -recoil, rotation
-            return 0.0, recoil, -rotation
-        if self.state == "death":
-            phase = min(self.frame_index, 3)
-            side = -1.0 if self.direction == "left" else 1.0
-            x = (0.0, 14.0, 34.0, 55.0)[phase] * side
-            y = (0.0, -12.0, -42.0, -88.0)[phase]
-            angle = (0.0, 0.42, 0.95, math.pi / 2)[phase] * side
-            return x, y, angle
         return 0.0, 0.0, 0.0
 
 
@@ -1048,10 +1125,13 @@ class GameUI:
         self.tool_image = p2.load_image(str(ASSET_DIR / "tool.png"))
         self.armor_image = p2.load_image(str(ASSET_DIR / "armor.png"))
         self.item_images: dict[str, p2.Image] = {}
+        self.held_item_images: dict[str, p2.Image] = {}
         for item_id, definition in ITEMS.items():
             thumbnail = GENERATED_ICON_DIR / definition.icon_filename
             source = thumbnail if thumbnail.exists() else ASSET_DIR / definition.icon_filename
             self.item_images[item_id] = p2.load_image(str(source))
+            held_source = HELD_TOOL_ICON_PATHS.get(item_id, source)
+            self.held_item_images[item_id] = p2.load_image(str(held_source))
 
         font_regular = Path("C:/Windows/Fonts/malgun.ttf")
         font_bold = Path("C:/Windows/Fonts/malgunbd.ttf")
@@ -1396,6 +1476,115 @@ class GameUI:
         )
         self.font_small.draw(left + 9.0, bottom + 9.0, text, (255, 241, 204))
 
+    def _draw_stone_axe_grip(
+        self,
+        player: Player,
+        draw_x: float,
+        draw_y: float,
+        display_scale: float,
+    ) -> None:
+        grip_offsets = {
+            "up": (36.0, 87.0),
+            "up_right": (39.0, 87.0),
+            "right": (42.0, 81.0),
+            "down_right": (42.0, 78.0),
+            "down": (42.0, 78.0),
+            "down_left": (-42.0, 78.0),
+            "left": (-42.0, 81.0),
+            "up_left": (-39.0, 87.0),
+        }
+        motion_x, motion_y, _rotation = HELD_STONE_AXE_MOTION[player.state][
+            player.frame_index % len(HELD_STONE_AXE_MOTION[player.state])
+        ]
+        if player.direction in WEST_FACING_DIRECTIONS:
+            motion_x = -motion_x
+        grip_x, grip_y = grip_offsets[player.direction]
+        center_x = draw_x + (grip_x + motion_x) * display_scale
+        center_y = draw_y + (grip_y + motion_y) * display_scale
+        side = -1.0 if player.direction in WEST_FACING_DIRECTIONS else 1.0
+        connector_left = center_x - (18.0 if side > 0 else 0.0) * display_scale
+        connector_right = center_x + (0.0 if side > 0 else 18.0) * display_scale
+        p2.draw_rectangle(
+            connector_left,
+            center_y - 4.0 * display_scale,
+            connector_right,
+            center_y + 4.0 * display_scale,
+            59,
+            33,
+            26,
+            255,
+            True,
+        )
+        p2.draw_rectangle(
+            center_x - (14.0 if side > 0 else 0.0) * display_scale,
+            center_y - 1.0 * display_scale,
+            center_x + (0.0 if side > 0 else 14.0) * display_scale,
+            center_y + 2.0 * display_scale,
+            130,
+            67,
+            38,
+            255,
+            True,
+        )
+
+        # A stepped 5x5-pixel fist matches the source sprite's rounded hand.
+        fist_unit = 3.0 * display_scale
+        p2.draw_rectangle(
+            center_x - 2.0 * fist_unit,
+            center_y - fist_unit,
+            center_x + 3.0 * fist_unit,
+            center_y + 2.0 * fist_unit,
+            59,
+            33,
+            26,
+            255,
+            True,
+        )
+        p2.draw_rectangle(
+            center_x - fist_unit,
+            center_y - 2.0 * fist_unit,
+            center_x + 2.0 * fist_unit,
+            center_y + 3.0 * fist_unit,
+            59,
+            33,
+            26,
+            255,
+            True,
+        )
+        p2.draw_rectangle(
+            center_x - fist_unit,
+            center_y - fist_unit,
+            center_x + 2.0 * fist_unit,
+            center_y + 2.0 * fist_unit,
+            238,
+            157,
+            105,
+            255,
+            True,
+        )
+        p2.draw_rectangle(
+            center_x - fist_unit,
+            center_y - fist_unit,
+            center_x + fist_unit,
+            center_y,
+            255,
+            208,
+            162,
+            255,
+            True,
+        )
+        p2.draw_rectangle(
+            center_x,
+            center_y + fist_unit,
+            center_x + 2.0 * fist_unit,
+            center_y + 2.0 * fist_unit,
+            139,
+            74,
+            45,
+            255,
+            True,
+        )
+
     def draw_equipped_world_tool(
         self,
         player: Player,
@@ -1410,28 +1599,77 @@ class GameUI:
         if stack is None:
             return
 
-        image = self.item_images[stack.item_id]
+        image = self.held_item_images[stack.item_id]
         draw_x = player.x if x is None else x
         draw_y = player.y if y is None else y
         if player.state in ("idle", "walk", "run"):
-            is_behind = player.direction == "up"
+            is_stone_axe = stack.item_id == "stone_axe"
+            if is_stone_axe and not behind:
+                self._draw_stone_axe_grip(
+                    player, draw_x, draw_y, display_scale
+                )
+                return
+            # The stone axe shaft is always behind the authored body so the
+            # existing hand pixels wrap over it instead of the axe covering
+            # the face/torso like a pasted-on icon.
+            is_behind = (
+                True
+                if is_stone_axe
+                else player.direction in NORTH_FACING_DIRECTIONS
+            )
             if behind != is_behind:
                 return
             offsets = {
-                "right": (43.0, 82.0),
-                "left": (-43.0, 82.0),
-                "down": (38.0, 76.0),
                 "up": (-34.0, 82.0),
+                "up_right": (37.0, 84.0),
+                "right": (48.0, 80.0),
+                "down_right": (43.0, 76.0),
+                "down": (38.0, 74.0),
+                "down_left": (-43.0, 76.0),
+                "left": (-48.0, 80.0),
+                "up_left": (-37.0, 84.0),
             }
-            rotations = {"right": 0.0, "left": 0.0, "down": -0.18, "up": 0.18}
+            if is_stone_axe:
+                offsets = {
+                    "up": (39.0, 102.0),
+                    "up_right": (42.0, 99.0),
+                    "right": (45.0, 96.0),
+                    "down_right": (45.0, 90.0),
+                    "down": (42.0, 87.0),
+                    "down_left": (-45.0, 90.0),
+                    "left": (-45.0, 96.0),
+                    "up_left": (-42.0, 99.0),
+                }
+            rotations = {
+                "up": 0.42 if is_stone_axe else 0.18,
+                "up_right": 0.30 if is_stone_axe else 0.10,
+                "right": 0.16 if is_stone_axe else 0.0,
+                "down_right": 0.0 if is_stone_axe else -0.10,
+                "down": -0.11 if is_stone_axe else -0.18,
+                "down_left": 0.0 if is_stone_axe else 0.10,
+                "left": -0.16 if is_stone_axe else 0.0,
+                "up_left": -0.30 if is_stone_axe else -0.10,
+            }
             offset_x, offset_y = offsets[player.direction]
+            rotation = rotations[player.direction]
+            if is_stone_axe:
+                motion = HELD_STONE_AXE_MOTION[player.state][
+                    player.frame_index % len(HELD_STONE_AXE_MOTION[player.state])
+                ]
+                motion_x, motion_y, motion_rotation = motion
+                if player.direction in WEST_FACING_DIRECTIONS:
+                    motion_x = -motion_x
+                    motion_rotation = -motion_rotation
+                offset_x += motion_x
+                offset_y += motion_y
+                rotation += motion_rotation
             image.composite_draw(
-                rotations[player.direction],
-                "h" if player.direction == "left" else "",
+                rotation,
+                "h" if player.direction in WEST_FACING_DIRECTIONS else "",
                 draw_x + offset_x * display_scale,
                 draw_y + offset_y * display_scale,
-                48 * display_scale,
-                48 * display_scale,
+                (84 if is_stone_axe else 48) * display_scale,
+                (84 if is_stone_axe else 48) * display_scale,
             )
             return
 
@@ -1446,7 +1684,10 @@ class GameUI:
         is_side = player.direction in ("left", "right")
         # On side swings the wind-up passes behind the body, then the tool
         # crosses in front. Front/back retain their established depth order.
-        is_behind = player.direction == "up" or (is_side and phase == 0)
+        is_behind = (
+            player.direction in NORTH_FACING_DIRECTIONS
+            or (is_side and phase == 0)
+        )
         if behind != is_behind:
             return
         front_paths = {
@@ -1490,8 +1731,8 @@ class GameUI:
         else:
             path, size = (back_paths if is_behind else front_paths)[player.state]
         offset_x, offset_y, rotation = path[phase]
-        flip = "h" if player.direction in ("left", "up") else ""
-        if player.direction == "left":
+        flip = "h" if player.direction in WEST_FACING_DIRECTIONS else ""
+        if player.direction in WEST_FACING_DIRECTIONS:
             offset_x = -offset_x
             rotation = -rotation
         image.composite_draw(
@@ -1512,9 +1753,7 @@ class Game:
     def __init__(self) -> None:
         if not CHARACTER_SHEET.exists():
             raise FileNotFoundError(
-                f"Missing coloured character sheet: {CHARACTER_SHEET}\n"
-                "Run: python CrowGame/tools/extract_character_sheet.py, then "
-                "powershell -ExecutionPolicy Bypass -File CrowGame/tools/style_character_sheet.ps1"
+                f"Missing v26 eight-direction character sheet: {CHARACTER_SHEET}"
             )
         self._player_sprite_sheet = p2.load_image(str(CHARACTER_SHEET))
         self._map_cache: dict[str, MapData] = {}
@@ -1839,13 +2078,7 @@ class Game:
         return self.projectiles.setdefault(self.map_data.name, [])
 
     def _nearest_melee_enemy(self, range_tiles: float) -> EnemyAI | None:
-        direction_vectors = {
-            "up": (0.0, 1.0),
-            "down": (0.0, -1.0),
-            "left": (-1.0, 0.0),
-            "right": (1.0, 0.0),
-        }
-        facing_x, facing_y = direction_vectors[self.player.direction]
+        facing_x, facing_y = DIRECTION_VECTORS[self.player.direction]
         nearest: EnemyAI | None = None
         nearest_distance = math.inf
         for enemy in self._current_enemies():
@@ -1881,10 +2114,7 @@ class Game:
         target_x, target_y = self.screen_to_world(x, y)
         dx = target_x - self.player.x
         dy = target_y - (self.player.y + CHARACTER_HEIGHT * 0.22)
-        if abs(dx) >= abs(dy):
-            self.player.direction = "right" if dx >= 0 else "left"
-        else:
-            self.player.direction = "up" if dy >= 0 else "down"
+        self.player.direction = direction_from_vector(dx, dy, self.player.direction)
 
     def _throw_target_world(self, screen_x: float, screen_y: float) -> tuple[float, float]:
         target_x, target_y = self.screen_to_world(screen_x, screen_y)
@@ -1957,13 +2187,7 @@ class Game:
     def _utility_placement_position(
         self, item_id: str
     ) -> tuple[float, float] | None:
-        direction_vectors = {
-            "up": (0.0, 1.0),
-            "down": (0.0, -1.0),
-            "left": (-1.0, 0.0),
-            "right": (1.0, 0.0),
-        }
-        forward_x, forward_y = direction_vectors[self.player.direction]
+        forward_x, forward_y = DIRECTION_VECTORS[self.player.direction]
         side_x, side_y = -forward_y, forward_x
         base_distance = UTILITY_PLACEMENT_SCREEN_DISTANCE / self.camera_zoom
         width, height = PLACED_UTILITY_WORLD_SIZES[item_id]

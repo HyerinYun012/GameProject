@@ -17,12 +17,17 @@ from CrowGame.main import (  # noqa: E402
     ATTACK_FRAMES,
     CUSTOM_SIDE_BODY_FRAMES,
     CUSTOM_SIDE_TOOL_PATHS,
+    DEATH_FRAMES,
+    DIRECTIONS,
     FRAME_HEIGHT,
     FRAME_WIDTH,
+    HELD_STONE_AXE_MOTION,
+    HELD_TOOL_ICON_PATHS,
     HURT_FRAMES,
     IDLE_FRAMES,
     MOVE_FRAMES,
     Player,
+    RUN_FRAMES,
     STATE_FPS,
     SIDE_ACTION_FRAMES,
     VERTICAL_TOOL_FRAMES,
@@ -30,25 +35,39 @@ from CrowGame.main import (  # noqa: E402
 
 
 class AnimationDataTests(unittest.TestCase):
+    def test_stone_axe_has_a_dedicated_held_pixel_asset(self) -> None:
+        self.assertEqual({"stone_axe"}, set(HELD_TOOL_ICON_PATHS))
+        self.assertTrue(HELD_TOOL_ICON_PATHS["stone_axe"].exists())
+        self.assertEqual({"idle", "walk", "run"}, set(HELD_STONE_AXE_MOTION))
+        for state, motion in HELD_STONE_AXE_MOTION.items():
+            self.assertEqual(4, len(motion), state)
+            self.assertGreater(len(set(motion)), 1, state)
+
     def test_directional_animation_sets_exist(self) -> None:
-        directions = {"left", "right", "up", "down"}
+        directions = set(DIRECTIONS)
         self.assertEqual(directions, set(MOVE_FRAMES))
+        self.assertEqual(directions, set(RUN_FRAMES))
         self.assertEqual(directions, set(IDLE_FRAMES))
         self.assertEqual(directions, set(HURT_FRAMES))
+        self.assertEqual(directions, set(DEATH_FRAMES))
         self.assertEqual(directions, set(ATTACK_FRAMES))
-        self.assertEqual(9, len(MOVE_FRAMES["left"]))
-        self.assertEqual(9, len(MOVE_FRAMES["right"]))
-        self.assertEqual(5, len(MOVE_FRAMES["up"]))
-        self.assertEqual(5, len(MOVE_FRAMES["down"]))
+        for direction in directions:
+            self.assertEqual(4, len(IDLE_FRAMES[direction]))
+            self.assertEqual(4, len(MOVE_FRAMES[direction]))
+            self.assertEqual(4, len(RUN_FRAMES[direction]))
+            self.assertEqual(2, len(HURT_FRAMES[direction]))
+            self.assertEqual(5, len(DEATH_FRAMES[direction]))
         self.assertGreater(STATE_FPS["run"], STATE_FPS["walk"])
 
     def test_side_idle_frames_face_the_last_horizontal_direction(self) -> None:
-        self.assertEqual(96, IDLE_FRAMES["right"][0].left)
-        self.assertEqual(208, IDLE_FRAMES["left"][0].left)
+        self.assertEqual(1134, IDLE_FRAMES["right"][0].left)
+        self.assertEqual(4, IDLE_FRAMES["right"][0].top)
+        self.assertEqual(1134, IDLE_FRAMES["left"][0].left)
+        self.assertEqual(76, IDLE_FRAMES["left"][0].top)
 
     def test_front_and_back_actions_share_consistent_body_frames(self) -> None:
         player = Player(sprite_sheet=None)
-        expected_rows = {"down": 192, "up": 144}
+        expected_rows = {"down": 76, "up": 4}
         for direction, expected_row in expected_rows.items():
             for state in ("attack", "axe", "mine", "fish"):
                 player.direction = direction
@@ -76,16 +95,18 @@ class AnimationDataTests(unittest.TestCase):
                     player._frames_for_state(),
                 )
                 self.assertTrue(
-                    all(frame.top == 0 for frame in player._frames_for_state())
+                    all(
+                        frame.top == (4 if direction == "right" else 76)
+                        for frame in player._frames_for_state()
+                    )
                 )
 
-    def test_custom_side_actions_never_reference_original_action_rows(self) -> None:
-        original_action_rows = {240, 288, 336, 432}
+    def test_tool_actions_reuse_the_replacement_character_idle_frames(self) -> None:
         for state in ("attack", "axe", "mine", "fish"):
-            for direction in ("left", "right"):
-                frames = SIDE_ACTION_FRAMES[state][direction]
-                self.assertTrue(
-                    all(frame.top not in original_action_rows for frame in frames)
+            for direction in DIRECTIONS:
+                self.assertEqual(
+                    IDLE_FRAMES[direction],
+                    SIDE_ACTION_FRAMES[state][direction],
                 )
 
     def test_custom_side_action_has_four_authored_body_beats(self) -> None:
@@ -118,10 +139,19 @@ class AnimationDataTests(unittest.TestCase):
             self.assertEqual(expected_direction, player.direction)
             self.assertEqual("idle", player.state)
 
+    def test_diagonal_move_uses_and_keeps_the_matching_direction(self) -> None:
+        player = Player(sprite_sheet=None)
+        player.update(0.05, {p2.SDLK_w, p2.SDLK_d})
+        self.assertEqual("up_right", player.direction)
+        self.assertEqual("walk", player.state)
+        player.update(0.05, set())
+        self.assertEqual("up_right", player.direction)
+        self.assertEqual("idle", player.state)
+
     def test_every_requested_action_has_frames_inside_the_atlas(self) -> None:
         player = Player(sprite_sheet=None)  # Drawing is not used in this data-only test.
         all_frames = []
-        for direction in ("left", "right", "up", "down"):
+        for direction in DIRECTIONS:
             player.direction = direction
             for state in ("idle", "walk", "run", "hurt", "death", "attack", "axe", "mine", "fish"):
                 player.state = state
@@ -132,32 +162,23 @@ class AnimationDataTests(unittest.TestCase):
         for frame in all_frames:
             self.assertGreaterEqual(frame.left, 0)
             self.assertGreaterEqual(frame.top, 0)
-            self.assertLessEqual(frame.left + FRAME_WIDTH, 304)
-            self.assertLessEqual(frame.top + FRAME_HEIGHT, 592)
+            self.assertLessEqual(frame.left + FRAME_WIDTH, 1944)
+            self.assertLessEqual(frame.top + FRAME_HEIGHT, 809)
 
     def test_action_state_list_is_complete(self) -> None:
         self.assertEqual({"hurt", "death", "attack", "axe", "mine", "fish"}, set(ACTION_STATES))
 
-    def test_static_hurt_cells_get_three_visible_recoil_beats(self) -> None:
+    def test_hurt_and_death_use_native_sheet_motion_without_extra_rotation(self) -> None:
         player = Player(sprite_sheet=None)
-        player.state = "hurt"
-        player.direction = "right"
-        transforms = []
-        for frame_index in range(3):
-            player.frame_index = frame_index
-            transforms.append(player._state_transform())
-        self.assertEqual(3, len(set(transforms)))
-
-    def test_death_has_four_falling_transforms_and_finishes_horizontal(self) -> None:
-        player = Player(sprite_sheet=None)
-        player.state = "death"
-        player.direction = "right"
-        transforms = []
-        for frame_index in range(4):
-            player.frame_index = frame_index
-            transforms.append(player._state_transform())
-        self.assertEqual(4, len(set(transforms)))
-        self.assertAlmostEqual(1.57079632679, transforms[-1][2], places=5)
+        for state, frame_count in (("hurt", 2), ("death", 5)):
+            player.state = state
+            player.direction = "down_right"
+            frames = player._frames_for_state()
+            self.assertEqual(frame_count, len(frames))
+            self.assertEqual(frame_count, len(set(frames)))
+            for frame_index in range(frame_count):
+                player.frame_index = frame_index
+                self.assertEqual((0.0, 0.0, 0.0), player._state_transform())
 
 
 if __name__ == "__main__":
