@@ -1243,6 +1243,8 @@ class Player:
 class GameUI:
     HUD_COLUMN_LEFT = 12
     HUD_COLUMN_RIGHT = 216
+    HUD_CLOCK_LEFT = WINDOW_WIDTH - 164
+    HUD_TOP = WINDOW_HEIGHT - 10
     INVENTORY_RECT = Rect(WINDOW_WIDTH / 2, 405, 630, 420)
     CRAFTING_RECT = Rect(WINDOW_WIDTH / 2, 370, 1140, 590)
     HOTBAR_RECT = Rect(WINDOW_WIDTH / 2, 87, 520, 173)
@@ -1478,7 +1480,11 @@ class GameUI:
     def _draw_toast(self, text: str, error: bool) -> None:
         padding = 24
         line_height = 26
-        max_text_width = WINDOW_WIDTH - 4 * padding
+        center_x = WINDOW_WIDTH / 2
+        available_half_width = min(
+            center_x - self.HUD_COLUMN_RIGHT, self.HUD_CLOCK_LEFT - center_x
+        ) - 12
+        max_text_width = 2 * (available_half_width - padding)
         text_width = self.measure_text_width(self.font, text)
         lines = [(text, text_width)]
         if text_width > max_text_width:
@@ -1494,11 +1500,12 @@ class GameUI:
                     line, line_width = candidate, candidate_width
             lines.append((line, line_width))
 
+        panel_height = len(lines) * line_height + 18
         panel = Rect(
-            WINDOW_WIDTH / 2,
-            WINDOW_HEIGHT / 2,
+            center_x,
+            self.HUD_TOP - panel_height / 2,
             max(width for _, width in lines) + 2 * padding,
-            len(lines) * line_height + 18,
+            panel_height,
         )
         self.draw_hud_panel(panel.left, panel.bottom, panel.right, panel.top)
         color = (255, 125, 115) if error else (255, 237, 176)
@@ -3907,12 +3914,15 @@ class Game:
     def _draw_game_clock(self) -> None:
         period = game_time_period(self.game_minutes)
         label = f"{period} {format_game_time(self.game_minutes)}"
-        self._draw_hud_label(label, 1116, 1268)
+        self._draw_hud_label(
+            label, self.ui.HUD_CLOCK_LEFT, WINDOW_WIDTH - self.ui.HUD_COLUMN_LEFT
+        )
 
     def _draw_hud_label(self, label: str, left: float, right: float) -> None:
-        self.ui.draw_hud_panel(left, 678, right, 710)
+        top = self.ui.HUD_TOP
+        self.ui.draw_hud_panel(left, top - 32, right, top)
         self._draw_centered_text(
-            self.ui.font, 694, label, (255, 236, 183), center_x=(left + right) / 2
+            self.ui.font, top - 16, label, (255, 236, 183), center_x=(left + right) / 2
         )
 
     @staticmethod
