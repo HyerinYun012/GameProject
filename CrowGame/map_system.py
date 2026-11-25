@@ -202,6 +202,7 @@ class MapData:
     spawns: dict[str, tuple[float, float]]
     collisions: tuple[WorldRect, ...]
     transitions: tuple[MapTransition, ...]
+    fishing_spots: tuple[WorldRect, ...]
     entities: tuple[WorldEntityDefinition, ...]
     tiles: tuple[MapTileDefinition, ...]
     object_tiles: tuple[MapObjectTileDefinition, ...]
@@ -493,6 +494,7 @@ def load_map_data(map_name: str, *, scale: float = MAP_SCALE) -> MapData:
     spawns: dict[str, tuple[float, float]] = {}
     collisions: list[WorldRect] = []
     transitions: list[MapTransition] = []
+    fishing_spots: list[WorldRect] = []
     entities: list[WorldEntityDefinition] = []
     tiles: list[MapTileDefinition] = []
     object_tiles: list[MapObjectTileDefinition] = []
@@ -558,6 +560,12 @@ def load_map_data(map_name: str, *, scale: float = MAP_SCALE) -> MapData:
             if not obj.get("visible", True):
                 continue
             props = _properties(obj)
+            if "fishing" in layer_name:
+                fishing_rect = _world_rect(
+                    obj, source_height, scale, offset_x, offset_y
+                )
+                if fishing_rect.width > 0 and fishing_rect.height > 0:
+                    fishing_spots.append(fishing_rect)
             if obj.get("point") and obj.get("name"):
                 spawns[str(obj["name"])] = (
                     (float(obj.get("x", 0.0)) + offset_x) * scale,
@@ -681,6 +689,7 @@ def load_map_data(map_name: str, *, scale: float = MAP_SCALE) -> MapData:
         spawns=spawns,
         collisions=tuple(collisions),
         transitions=tuple(transitions),
+        fishing_spots=tuple(fishing_spots),
         entities=tuple(entities),
         tiles=tuple(tiles),
         object_tiles=tuple(

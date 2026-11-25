@@ -29,12 +29,21 @@ class InventoryModelTests(unittest.TestCase):
         self.assertEqual(5, ITEMS["fruit"].heal_amount)
         self.assertTrue((PROJECT_DIR / "assets" / "apple.png").exists())
 
+    def test_raw_and_cooked_fish_items_have_healing_icons(self) -> None:
+        self.assertEqual(5, ITEMS["fish"].heal_amount)
+        self.assertEqual(10, ITEMS["cooked_fish"].heal_amount)
+        for item_id in ("fish", "cooked_fish"):
+            self.assertEqual(10, ITEMS[item_id].max_stack)
+            self.assertTrue(
+                (PROJECT_DIR / "assets" / ITEMS[item_id].icon_filename).exists()
+            )
+
     def test_gathered_materials_are_limited_to_ten_per_slot(self) -> None:
-        for item_id in ("fruit", "wood", "stone", "fiber"):
+        for item_id in ("fruit", "fish", "cooked_fish", "wood", "stone", "fiber"):
             self.assertEqual(10, ITEMS[item_id].max_stack)
 
     def test_definition_and_demo_sizes(self) -> None:
-        self.assertEqual(17, len(ITEMS))
+        self.assertEqual(19, len(ITEMS))
         self.assertEqual(10, len(TOOL_ITEM_IDS))
         self.assertEqual({"light_armor"}, ARMOR_ITEM_IDS)
         model = InventoryModel.demo()

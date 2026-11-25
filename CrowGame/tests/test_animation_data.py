@@ -119,6 +119,20 @@ class AnimationDataTests(unittest.TestCase):
             transforms.append(player._state_transform())
         self.assertEqual(4, len(set(transforms)))
 
+    def test_fishing_keeps_one_body_frame_while_only_the_rod_animates(self) -> None:
+        player = Player(sprite_sheet=None)
+        player.state = "fish"
+        for direction in DIRECTIONS:
+            player.direction = direction
+            visible_frames = []
+            transforms = []
+            for frame_index in range(4):
+                player.frame_index = frame_index
+                visible_frames.append(player._frame_for_draw())
+                transforms.append(player._state_transform())
+            self.assertEqual([IDLE_FRAMES[direction][0]] * 4, visible_frames)
+            self.assertEqual([(0.0, 0.0, 0.0)] * 4, transforms)
+
     def test_each_custom_side_tool_has_four_authored_arc_positions(self) -> None:
         self.assertEqual(
             {"attack", "axe", "mine", "fish"}, set(CUSTOM_SIDE_TOOL_PATHS)

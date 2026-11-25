@@ -89,6 +89,14 @@ ITEMS: dict[str, ItemDefinition] = {
         "fruit", "사과", "apple.png", "material", max_stack=10,
         heal_amount=5,
     ),
+    "fish": ItemDefinition(
+        "fish", "생선", "fish.png", "material", max_stack=10,
+        heal_amount=5,
+    ),
+    "cooked_fish": ItemDefinition(
+        "cooked_fish", "익힌 생선", "cooked_fish.png", "material", max_stack=10,
+        heal_amount=10,
+    ),
     "travel_bedding": ItemDefinition("travel_bedding", "간이 침구", "travel bedding set.png", "utility"),
     "campfire": ItemDefinition("campfire", "모닥불", "bonfire.png", "utility"),
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import math
 import random
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 import pico2d as p2
+import pico2d.pico2d as pico_core
 
 try:  # Works both as ``python main.py`` and ``python -m CrowGame.main``.
     from .game_model import (
@@ -64,8 +66,25 @@ MAX_HP = 100.0
 MAX_SP = 100.0
 SP_DRAIN_PER_SECOND = 25.0
 SP_RECOVERY_PER_SECOND = 18.0
+NIGHT_SP_RECOVERY_MULTIPLIER = 0.70
 SP_RUN_RESTART_THRESHOLD = 20.0
 CAMERA_ZOOM = 0.50
+GAME_MINUTES_PER_REAL_SECOND = 2.0
+GAME_DAY_MINUTES = 24.0 * 60.0
+GAME_START_MINUTES = 8.0 * 60.0
+DAWN_START_MINUTES = 5.0 * 60.0
+DAY_START_MINUTES = 7.0 * 60.0
+DUSK_START_MINUTES = 17.0 * 60.0
+NIGHT_START_MINUTES = 20.0 * 60.0
+SLEEP_ALLOWED_START_MINUTES = 17.0 * 60.0
+SLEEP_WAKE_MINUTES = 8.0 * 60.0
+SLEEP_FAST_FORWARD_MINUTES_PER_REAL_SECOND = 240.0
+NIGHT_AMBIENT_ALPHA = 82
+NIGHT_EXTERIOR_ALPHA = 245
+NIGHT_VISION_RADIUS = 100.0
+TORCH_VISION_RADIUS = 260.0
+NIGHT_VISION_FEATHER = 96.0
+NIGHT_MASK_SIZE = 768
 INTERACTION_SCREEN_DISTANCE = 125.0
 AUTO_PICKUP_SCREEN_DISTANCE = 115.0
 THROWN_DROP_REARM_MOVEMENT = 30.0
@@ -94,11 +113,45 @@ UNARMED_RANGE_TILES = 1.0
 PLACED_UTILITY_SCREEN_DISTANCE = 130.0
 UTILITY_PLACEMENT_SCREEN_DISTANCE = 105.0
 INSTALLABLE_ITEM_IDS = frozenset({"travel_bedding", "campfire"})
+FISHING_BITE_MIN_SECONDS = 1.5
+FISHING_BITE_MAX_SECONDS = 4.0
+FISHING_REACTION_SECONDS = 1.0
+FISHING_TENSION_RISE_PER_SECOND = 58.0
+FISHING_TENSION_FALL_PER_SECOND = 46.0
+FISHING_SAFE_TENSION_MIN = 42.0
+FISHING_SAFE_TENSION_MAX = 62.0
+FISHING_DANGER_TENSION_MIN = 8.0
+FISHING_DANGER_TENSION_MAX = 90.0
+FISHING_DANGER_HOLD_SECONDS = 0.60
+FISHING_CAPTURE_PER_SECOND = 18.0
+FISHING_CAPTURE_LOSS_PER_SECOND = 14.0
+GAME_TITLE = "The Last Wile Human"
+CUTSCENE_FADE_SECONDS = 0.65
+CUTSCENE_HOLD_SECONDS = 3.60
+CUTSCENE_FAST_FORWARD_RATE = 2.0
+CUTSCENE_CONTROLS_HEIGHT = 60
+LOBBY_FADE_SECONDS = 0.65
 PLACED_UTILITY_WORLD_SIZES = {
     "travel_bedding": (240.0, 170.0),
     "campfire": (190.0, 190.0),
 }
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
+LOBBY_BACKGROUND_PATH = ASSET_DIR / "ui" / "lobby_background.png"
+LOBBY_BUTTON_PATH = ASSET_DIR / "ui" / "lobby_button.png"
+CUTSCENE_DIR = Path(__file__).resolve().parent.parent / "ENDING"
+INTRO_CUTSCENE_PATHS = tuple(
+    CUTSCENE_DIR / f"story{index}.png" for index in range(1, 5)
+)
+CONFLICT_ENDING_CUTSCENE_PATHS = tuple(
+    CUTSCENE_DIR / f"ending1-{index}.png" for index in range(1, 6)
+)
+RECONCILIATION_ENDING_CUTSCENE_PATHS = tuple(
+    CUTSCENE_DIR / f"ending2-{index}.png" for index in range(1, 7)
+)
+NIGHT_MASK_PATHS = {
+    False: ASSET_DIR / "ui" / "night_mask.png",
+    True: ASSET_DIR / "ui" / "night_mask_torch.png",
+}
 FRUIT_TREE_UNRIPE_SPRITE = ASSET_DIR / "fruit_tree_unripe.png"
 AWARENESS_ICON_PATHS = {
     "suspicious": ASSET_DIR / "ui" / "suspicion_question.png",
@@ -181,6 +234,44 @@ def direction_from_vector(dx: float, dy: float, fallback: str = "down") -> str:
         "down",
         "down_right",
     )[octant]
+
+
+def format_game_time(game_minutes: float) -> str:
+    """Return a wrapping 12-hour clock label for the current game time."""
+    minute = int(game_minutes % GAME_DAY_MINUTES)
+    hour = minute // 60
+    display_hour = hour % 12 or 12
+    return f"{display_hour:02d}:{minute % 60:02d}"
+
+
+def game_time_period(game_minutes: float) -> str:
+    """Return the Korean AM/PM label displayed beside the clock."""
+    minute = game_minutes % GAME_DAY_MINUTES
+    return "오전" if minute < 12 * 60 else "오후"
+
+
+def night_darkness_progress(game_minutes: float) -> float:
+    """Return 0 in daylight and a smooth 0..1 dusk/night/dawn amount."""
+    minute = game_minutes % GAME_DAY_MINUTES
+    if DUSK_START_MINUTES <= minute < NIGHT_START_MINUTES:
+        return (minute - DUSK_START_MINUTES) / (
+            NIGHT_START_MINUTES - DUSK_START_MINUTES
+        )
+    if minute >= NIGHT_START_MINUTES or minute < DAWN_START_MINUTES:
+        return 1.0
+    if DAWN_START_MINUTES <= minute < DAY_START_MINUTES:
+        return 1.0 - (minute - DAWN_START_MINUTES) / (
+            DAY_START_MINUTES - DAWN_START_MINUTES
+        )
+    return 0.0
+
+
+def stamina_recovery_multiplier(game_minutes: float) -> float:
+    """Return the daytime rate or the 30%-slower full-night rate."""
+    minute = game_minutes % GAME_DAY_MINUTES
+    if minute >= NIGHT_START_MINUTES or minute < DAWN_START_MINUTES:
+        return NIGHT_SP_RECOVERY_MULTIPLIER
+    return 1.0
 
 
 STATE_FPS = {
@@ -546,11 +637,24 @@ class EnemyAI:
         distance = math.hypot(dx, dy)
         stop_distance = 2.0 if self.animal == "crow" else 12.0
         if distance <= stop_distance:
-            self._set_state("idle")
+            if self.animal == "crow":
+                # The patrol target itself moves a small amount every frame.
+                # Switching to idle whenever the crow catches that point makes
+                # the renderer alternate between two different sprite sheets,
+                # which looks like a rapid blink. Snap the final tiny distance
+                # and keep the continuous flight cycle instead.
+                if distance > 0.01:
+                    self.x = target_x
+                    self.y = target_y
+                    self._face_vector(dx, dy)
+                self._set_state("walk")
+            else:
+                self._set_state("idle")
             return
         speed = float(ANIMAL_STATS[self.animal]["speed"])
-        move_x = dx / distance * speed * dt
-        move_y = dy / distance * speed * dt
+        travel_distance = min(speed * dt, distance)
+        move_x = dx / distance * travel_distance
+        move_y = dy / distance * travel_distance
         if self.animal == "crow":
             # Crows fly over ground props and collision tiles; resolving them
             # like walking animals makes the patrol visibly snag on scenery.
@@ -986,6 +1090,7 @@ class Player:
         dt: float,
         pressed: set[int],
         movement_resolver: Callable[[float, float, float, float], tuple[float, float]] | None = None,
+        sp_recovery_multiplier: float = 1.0,
     ) -> None:
         running = False
         moved = False
@@ -1034,7 +1139,12 @@ class Player:
             if self.sp <= 0:
                 self.stamina_exhausted = True
         elif self.state in ("idle", "walk"):
-            self.sp = min(self.max_sp, self.sp + SP_RECOVERY_PER_SECOND * dt)
+            recovery = (
+                SP_RECOVERY_PER_SECOND
+                * max(sp_recovery_multiplier, 0.0)
+                * dt
+            )
+            self.sp = min(self.max_sp, self.sp + recovery)
             if self.stamina_exhausted and self.sp >= SP_RUN_RESTART_THRESHOLD:
                 self.stamina_exhausted = False
 
@@ -1070,8 +1180,7 @@ class Player:
         y: float | None = None,
         display_scale: float = 1.0,
     ) -> None:
-        frames = self._frames_for_state()
-        frame = frames[min(self.frame_index, len(frames) - 1)]
+        frame = self._frame_for_draw()
         source_bottom = self.sprite_sheet.h - frame.top - FRAME_HEIGHT
         offset_x, offset_y, rotation = self._state_transform()
         draw_x = self.x if x is None else x
@@ -1089,10 +1198,37 @@ class Player:
             CHARACTER_HEIGHT * display_scale,
         )
 
+    def draw_sleeping(self, bedding: Rect) -> None:
+        # Use the head and shoulder of a lying frame so the blanket covers the body.
+        frame = DEATH_FRAMES["right"][-1]
+        crop_width, crop_height = 26, 31
+        head_width = bedding.width * 0.25
+        self.sprite_sheet.clip_composite_draw(
+            frame.left + 44,
+            self.sprite_sheet.h - frame.top - 40 - crop_height,
+            crop_width,
+            crop_height,
+            math.radians(23),
+            frame.flip,
+            bedding.cx + bedding.width * 0.19,
+            bedding.cy + bedding.height * 0.20,
+            head_width,
+            head_width * crop_height / crop_width,
+        )
+
+    def _frame_for_draw(self) -> SpriteFrame:
+        if self.state == "fish":
+            # Fishing phases animate the equipped rod only. Reusing one idle
+            # body frame prevents the character from leaning or stepping while
+            # the rod follows its four authored arc positions.
+            return IDLE_FRAMES[self.direction][0]
+        frames = self._frames_for_state()
+        return frames[min(self.frame_index, len(frames) - 1)]
+
     def _state_transform(self) -> tuple[float, float, float]:
         """Author side-action recoil; hurt/death motion lives in the v26 sheet."""
         if (
-            self.state in ("attack", "axe", "mine", "fish")
+            self.state in ("attack", "axe", "mine")
             and self.direction in ("left", "right")
         ):
             phase = min(self.frame_index, 3)
@@ -1105,6 +1241,8 @@ class Player:
 
 
 class GameUI:
+    HUD_COLUMN_LEFT = 12
+    HUD_COLUMN_RIGHT = 216
     INVENTORY_RECT = Rect(WINDOW_WIDTH / 2, 405, 630, 420)
     CRAFTING_RECT = Rect(WINDOW_WIDTH / 2, 370, 1140, 590)
     HOTBAR_RECT = Rect(WINDOW_WIDTH / 2, 87, 520, 173)
@@ -1117,6 +1255,69 @@ class GameUI:
         (294, 782), (534, 782), (774, 782), (1014, 782), (1255, 782),
     )
     HOTBAR_SOURCE_X = (420, 755, 1089, 1423, 1760)
+
+    HEART_POTION_ICON = (
+        "....CCCC....",
+        "...CccccC...",
+        "...CCCCCC...",
+        "....IwwI....",
+        "...Iw..wI...",
+        "..IwwrrrwI..",
+        ".IwrhhrhhrI.",
+        ".IwrhhhhhrI.",
+        ".IrrrhhhrrI.",
+        ".IdrrrhrrdI.",
+        "..IdrrrrdI..",
+        "...IIIIII...",
+    )
+    RUNNER_ICON = (
+        "........yy..",
+        ".......yYYy.",
+        "........yy..",
+        "......yy..y.",
+        ".....yYy.yy.",
+        ".ss.yyYYyy..",
+        "...yy.yy....",
+        "......yyy...",
+        ".s...yy.yy..",
+        "....yy...y..",
+        "..yyy....y..",
+        ".........yy.",
+    )
+    FAST_FORWARD_ICON = (
+        "YY...YY....",
+        ".YY...YY...",
+        "..YY...YY..",
+        "...YY...YY.",
+        "....YY...YY",
+        "...YY...YY.",
+        "..YY...YY..",
+        ".YY...YY...",
+        "YY...YY....",
+    )
+    PAUSE_ICON = ("YY..YY",) * 8
+    PLAY_ICON = (
+        "Y.....",
+        "YYY...",
+        "YYYYY.",
+        "YYYYYY",
+        "YYYYYY",
+        "YYYYY.",
+        "YYY...",
+        "Y.....",
+    )
+    HUD_ICON_COLORS = {
+        "C": (155, 95, 50),
+        "c": (239, 184, 112),
+        "I": (191, 135, 134),
+        "w": (251, 204, 189),
+        "r": (207, 57, 76),
+        "h": (255, 230, 222),
+        "d": (147, 36, 55),
+        "y": (241, 181, 75),
+        "Y": (255, 232, 158),
+        "s": (144, 109, 64),
+    }
 
     def __init__(self, model: InventoryModel) -> None:
         self.model = model
@@ -1138,7 +1339,8 @@ class GameUI:
         self.font_small = p2.load_font(str(font_regular), 15)
         self.font = p2.load_font(str(font_bold), 18)
         self.font_title = p2.load_font(str(font_bold), 23)
-        self.font_game_over = p2.load_font(str(font_bold), 42)
+        self.font_lobby_title = p2.load_font(str(font_bold), 60)
+        self.font_lobby_button = p2.load_font(str(font_bold), 30)
 
     @staticmethod
     def _source_to_screen(panel: Rect, source_w: float, source_h: float, sx: float, sy: float) -> tuple[float, float]:
@@ -1255,23 +1457,56 @@ class GameUI:
         if crafting_open:
             self._draw_crafting()
 
-        self.font.draw(1000, 146, "TOOL BAR", (255, 225, 165))
-        self.font.draw(1161, 146, "ARMOR", (255, 225, 165))
         armor = self.model.armor_slot
         if armor is not None and armor.durability is not None:
             armor_status = f"내구 {armor.durability}/{armor.definition.max_durability}"
-        else:
-            armor_status = "방어구 없음"
-        self.font_small.draw(1144, 17, armor_status, (235, 242, 255))
+            self.font_small.draw(1144, 17, armor_status, (235, 242, 255))
 
         if drag:
             self.item_images[drag.item_id].draw(drag.x, drag.y, 70, 70)
-        if toast:
-            color = (255, 125, 115) if toast_error else (255, 237, 176)
-            p2.draw_rectangle(376, 655, 904, 700, 28, 24, 22, 220, True)
-            self.font.draw(405, 677, toast, color)
         if hovered_slot is not None:
             self._draw_durability_tooltip(hovered_slot, mouse_x, mouse_y)
+        if toast:
+            self._draw_toast(toast, toast_error)
+
+    @staticmethod
+    def measure_text_width(font: p2.Font, text: str) -> int:
+        width = ctypes.c_int()
+        p2.TTF_SizeUTF8(font.font, text.encode("utf-8"), ctypes.byref(width), None)
+        return width.value
+
+    def _draw_toast(self, text: str, error: bool) -> None:
+        padding = 24
+        line_height = 26
+        max_text_width = WINDOW_WIDTH - 4 * padding
+        text_width = self.measure_text_width(self.font, text)
+        lines = [(text, text_width)]
+        if text_width > max_text_width:
+            lines = []
+            line, line_width = "", 0
+            for word in text.split():
+                candidate = f"{line} {word}" if line else word
+                candidate_width = self.measure_text_width(self.font, candidate)
+                if line and candidate_width > max_text_width:
+                    lines.append((line, line_width))
+                    line, line_width = word, self.measure_text_width(self.font, word)
+                else:
+                    line, line_width = candidate, candidate_width
+            lines.append((line, line_width))
+
+        panel = Rect(
+            WINDOW_WIDTH / 2,
+            WINDOW_HEIGHT / 2,
+            max(width for _, width in lines) + 2 * padding,
+            len(lines) * line_height + 18,
+        )
+        self.draw_hud_panel(panel.left, panel.bottom, panel.right, panel.top)
+        color = (255, 125, 115) if error else (255, 237, 176)
+        first_line_y = panel.cy + (len(lines) - 1) * line_height / 2 + 1
+        for index, (line, width) in enumerate(lines):
+            self.font.draw(
+                panel.cx - width / 2, first_line_y - index * line_height, line, color
+            )
 
     def _draw_crafting(self) -> None:
         panel = self.CRAFTING_RECT
@@ -1351,18 +1586,50 @@ class GameUI:
                     text_color,
                 )
 
+    @staticmethod
+    def draw_hud_panel(left: float, bottom: float, right: float, top: float) -> None:
+        rim = (112, 85, 52)
+        inset = (21, 27, 24)
+        p2.draw_rectangle(left + 2, bottom, right - 2, top, *rim, 255, True)
+        p2.draw_rectangle(left, bottom + 2, right, top - 2, *rim, 255, True)
+        p2.draw_rectangle(left + 2, bottom + 2, right - 2, top - 2, *inset, 255, True)
+        for start, end in ((left + 2, left + 9), (right - 9, right - 2)):
+            p2.draw_rectangle(start, top, end, top, 193, 152, 89, 255, True)
+            p2.draw_rectangle(start, bottom, end, bottom, 154, 117, 68, 255, True)
+
+    @classmethod
+    def draw_hud_icon(cls, icon: tuple[str, ...], cx: float, cy: float) -> None:
+        pixel_size = 2
+        left = cx - len(icon[0]) * pixel_size / 2
+        top = cy + len(icon) * pixel_size / 2 - 1
+        for row_index, row in enumerate(icon):
+            y = top - row_index * pixel_size
+            for column_index, shade in enumerate(row):
+                if shade == ".":
+                    continue
+                x = left + column_index * pixel_size
+                p2.draw_rectangle(
+                    x,
+                    y - pixel_size + 1,
+                    x + pixel_size - 1,
+                    y,
+                    *cls.HUD_ICON_COLORS[shade],
+                    255,
+                    True,
+                )
+
     def draw_status_bars(self, player: Player) -> None:
         def draw_bar(
-            label: str,
+            icon: tuple[str, ...],
             bottom: float,
             ratio: float,
             fill_color: tuple[int, int, int],
         ) -> None:
-            bar_left = 51.0
-            bar_right = 216.0
+            bar_left = self.HUD_COLUMN_LEFT + 39
+            bar_right = self.HUD_COLUMN_RIGHT - 6
             bar_top = bottom + 18.0
-            p2.draw_rectangle(
-                12, bottom - 4, 216, bar_top + 4, 18, 23, 22, 215, True
+            self.draw_hud_panel(
+                self.HUD_COLUMN_LEFT, bottom - 4, self.HUD_COLUMN_RIGHT, bar_top + 4
             )
             p2.draw_rectangle(
                 bar_left, bottom, bar_right, bar_top, 40, 42, 40, 255, True
@@ -1389,10 +1656,11 @@ class GameUI:
                 255,
                 False,
             )
-            self.font_small.draw(19, bottom + 2, label, (255, 238, 205))
+            icon_x = (self.HUD_COLUMN_LEFT + bar_left) / 2
+            self.draw_hud_icon(icon, icon_x, (bottom + bar_top) / 2)
 
-        draw_bar("HP", 649, player.hp / player.max_hp, (205, 54, 65))
-        draw_bar("SP", 617, player.sp / player.max_sp, (224, 171, 54))
+        draw_bar(self.HEART_POTION_ICON, 649, player.hp / player.max_hp, (205, 54, 65))
+        draw_bar(self.RUNNER_ICON, 617, player.sp / player.max_sp, (224, 171, 54))
 
     def _draw_stack(self, ref: SlotRef, rect: Rect, skip: SlotRef | None) -> None:
         canonical = self.model.canonical_ref(ref)
@@ -1746,9 +2014,22 @@ class GameUI:
 
 
 class Game:
-    GAME_OVER_PANEL = Rect(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2, 540, 300)
-    RETRY_BUTTON = Rect(WINDOW_WIDTH / 2 - 112, WINDOW_HEIGHT / 2 - 72, 190, 58)
-    QUIT_BUTTON = Rect(WINDOW_WIDTH / 2 + 112, WINDOW_HEIGHT / 2 - 72, 190, 58)
+    DIALOG_PANEL = Rect(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2, 430, 174)
+    _DIALOG_LEFT_BUTTON = Rect(WINDOW_WIDTH / 2 - 100, WINDOW_HEIGHT / 2 - 32, 168, 48)
+    _DIALOG_RIGHT_BUTTON = Rect(WINDOW_WIDTH / 2 + 100, WINDOW_HEIGHT / 2 - 32, 180, 48)
+    RETRY_BUTTON = _DIALOG_LEFT_BUTTON
+    RETURN_TO_LOBBY_BUTTON = _DIALOG_RIGHT_BUTTON
+    PAUSE_QUIT_BUTTON = _DIALOG_LEFT_BUTTON
+    PAUSE_RESUME_BUTTON = _DIALOG_RIGHT_BUTTON
+    LOBBY_START_BUTTON = Rect(WINDOW_WIDTH / 2, 340, 390, 72)
+    LOBBY_QUIT_BUTTON = Rect(WINDOW_WIDTH / 2, 240, 390, 72)
+    CUTSCENE_PAUSE_BUTTON = Rect(
+        WINDOW_WIDTH - 262, CUTSCENE_CONTROLS_HEIGHT / 2, 76, 36
+    )
+    CUTSCENE_FAST_FORWARD_BUTTON = Rect(
+        WINDOW_WIDTH - 176, CUTSCENE_CONTROLS_HEIGHT / 2, 76, 36
+    )
+    CUTSCENE_SKIP_BUTTON = Rect(WINDOW_WIDTH - 76, CUTSCENE_CONTROLS_HEIGHT / 2, 104, 36)
 
     def __init__(self) -> None:
         if not CHARACTER_SHEET.exists():
@@ -1760,7 +2041,15 @@ class Game:
         self._background_cache: dict[str, p2.Image] = {}
         self._world_image_cache: dict[Path, p2.Image] = {}
         self._animal_image_cache: dict[tuple[str, str], p2.Image] = {}
+        self._cutscene_image_cache: dict[Path, p2.Image] = {}
+        self.lobby_background = p2.load_image(str(LOBBY_BACKGROUND_PATH))
+        self.lobby_button_image = p2.load_image(str(LOBBY_BUTTON_PATH))
+        self._night_mask_images = {
+            torch_held: p2.load_image(str(path))
+            for torch_held, path in NIGHT_MASK_PATHS.items()
+        }
         self._reset_game_state()
+        self._start_cutscene(INTRO_CUTSCENE_PATHS, "intro")
 
     def _reset_game_state(self) -> None:
         """Restore every mutable play-session value to a brand-new game."""
@@ -1781,11 +2070,35 @@ class Game:
         self.camera_x = 0.0
         self.camera_y = 0.0
         self.camera_zoom = CAMERA_ZOOM
+        self.game_minutes = GAME_START_MINUTES
+        self.sleep_bedding: PlacedUtility | None = None
+        self.sleep_minutes_remaining = 0.0
+        self.fishing_state = "idle"
+        self.fishing_bite_timer = 0.0
+        self.fishing_reaction_timer = 0.0
+        self.fishing_tension = 0.0
+        self.fishing_capture = 0.0
+        self.fishing_danger_timer = 0.0
+        self.fishing_reeling = False
+        self.active_fishing_spot: WorldRect | None = None
+        self.fishing_direction: str | None = None
+        self.fishing_origin: tuple[float, float] | None = None
         self.transition_armed = False
         self.ending_timer = 0.0
         self.ending_variant = ""
+        self.cutscene_sequence: tuple[Path, ...] = ()
+        self.cutscene_kind = ""
+        self.cutscene_index = 0
+        self.cutscene_elapsed = 0.0
+        self.cutscene_fast_forward = False
+        self.cutscene_paused = False
+        self.world_fade_remaining = 0.0
+        self.lobby_active = False
+        self.lobby_transition = ""
+        self.lobby_transition_elapsed = 0.0
         self.running = True
         self.game_over = False
+        self.game_paused = False
         self.inventory_open = False
         self.crafting_open = False
         self.pressed: set[int] = set()
@@ -1799,6 +2112,172 @@ class Game:
 
     def restart_game(self) -> None:
         self._reset_game_state()
+        self.world_fade_remaining = LOBBY_FADE_SECONDS
+
+    @property
+    def sleeping(self) -> bool:
+        return self.sleep_bedding is not None
+
+    @property
+    def cutscene_active(self) -> bool:
+        return bool(self.cutscene_sequence)
+
+    @staticmethod
+    def _cutscene_scene_seconds() -> float:
+        return CUTSCENE_FADE_SECONDS * 2.0 + CUTSCENE_HOLD_SECONDS
+
+    def _cutscene_image(self, path: Path) -> p2.Image:
+        image = self._cutscene_image_cache.get(path)
+        if image is None:
+            image = p2.load_image(str(path))
+            self._cutscene_image_cache[path] = image
+        return image
+
+    def _start_cutscene(self, sequence: tuple[Path, ...], kind: str) -> None:
+        if not sequence:
+            return
+        missing = [path for path in sequence if not path.exists()]
+        if missing:
+            raise FileNotFoundError(missing[0])
+        self.cutscene_sequence = tuple(sequence)
+        self.cutscene_kind = kind
+        self.cutscene_index = 0
+        self.cutscene_elapsed = 0.0
+        self.cutscene_fast_forward = False
+        self.cutscene_paused = False
+        self.world_fade_remaining = 0.0
+        self.pressed.clear()
+        self.inventory_open = False
+        self.crafting_open = False
+        self.drag = None
+        # Preloading the active sequence avoids a disk-load hitch between
+        # consecutive narrative panels. Data-only tests use Game.__new__ and
+        # intentionally do not own a render cache.
+        if hasattr(self, "_cutscene_image_cache"):
+            for path in sequence:
+                self._cutscene_image(path)
+
+    def _return_to_lobby(self) -> None:
+        self.cutscene_sequence = ()
+        self.cutscene_kind = ""
+        self.cutscene_index = 0
+        self.cutscene_elapsed = 0.0
+        self.cutscene_fast_forward = False
+        self.cutscene_paused = False
+        self.game_paused = False
+        self.lobby_active = True
+        self.lobby_transition = ""
+        self.lobby_transition_elapsed = 0.0
+        self.world_fade_remaining = LOBBY_FADE_SECONDS
+        self.pressed.clear()
+        self.drag = None
+
+    def _activate_lobby_button(self, x: float, y: float) -> bool:
+        if not self.lobby_active or self.lobby_transition:
+            return False
+        if self.LOBBY_START_BUTTON.contains(x, y):
+            self.lobby_transition = "start"
+        elif self.LOBBY_QUIT_BUTTON.contains(x, y):
+            self.lobby_transition = "quit"
+        else:
+            return False
+        self.lobby_transition_elapsed = 0.0
+        self.pressed.clear()
+        return True
+
+    def _handle_lobby_event(self, event: object) -> None:
+        if self.lobby_transition:
+            return
+        if event.type == p2.SDL_KEYDOWN and event.key == p2.SDLK_RETURN:
+            self.lobby_transition = "start"
+            self.lobby_transition_elapsed = 0.0
+        elif event.type == p2.SDL_MOUSEMOTION:
+            self.mouse_screen_x = event.x
+            self.mouse_screen_y = WINDOW_HEIGHT - 1 - event.y
+        elif (
+            event.type == p2.SDL_MOUSEBUTTONDOWN
+            and event.button == p2.SDL_BUTTON_LEFT
+        ):
+            x, y = event.x, WINDOW_HEIGHT - 1 - event.y
+            self.mouse_screen_x = x
+            self.mouse_screen_y = y
+            self._activate_lobby_button(x, y)
+
+    def _update_lobby(self, dt: float) -> None:
+        if not self.lobby_transition:
+            return
+        self.lobby_transition_elapsed = min(
+            LOBBY_FADE_SECONDS,
+            self.lobby_transition_elapsed + dt,
+        )
+        if self.lobby_transition_elapsed < LOBBY_FADE_SECONDS:
+            return
+        if self.lobby_transition == "quit":
+            # The loop draws one last fully black lobby frame before closing.
+            self.running = False
+            return
+        self.restart_game()
+
+    def _update_cutscene(self, dt: float) -> None:
+        if not self.cutscene_active or self.cutscene_paused:
+            return
+        playback_rate = CUTSCENE_FAST_FORWARD_RATE if self.cutscene_fast_forward else 1.0
+        self.cutscene_elapsed += dt * playback_rate
+        scene_seconds = self._cutscene_scene_seconds()
+        while self.cutscene_elapsed >= scene_seconds:
+            self.cutscene_elapsed -= scene_seconds
+            self.cutscene_index += 1
+            if self.cutscene_index >= len(self.cutscene_sequence):
+                self._return_to_lobby()
+                return
+
+    def _request_cutscene_advance(self) -> None:
+        if not self.cutscene_active or self.cutscene_paused:
+            return
+        fade_out_start = CUTSCENE_FADE_SECONDS + CUTSCENE_HOLD_SECONDS
+        if self.cutscene_elapsed < fade_out_start:
+            self.cutscene_elapsed = fade_out_start
+
+    def _handle_cutscene_event(self, event: object) -> None:
+        if event.type == p2.SDL_KEYDOWN:
+            if event.key in (p2.SDLK_SPACE, p2.SDLK_RETURN):
+                self._request_cutscene_advance()
+        elif event.type == p2.SDL_MOUSEMOTION:
+            self.mouse_screen_x = event.x
+            self.mouse_screen_y = WINDOW_HEIGHT - 1 - event.y
+        elif (
+            event.type == p2.SDL_MOUSEBUTTONDOWN
+            and event.button == p2.SDL_BUTTON_LEFT
+        ):
+            x, y = event.x, WINDOW_HEIGHT - 1 - event.y
+            self.mouse_screen_x, self.mouse_screen_y = x, y
+            if self.CUTSCENE_SKIP_BUTTON.contains(x, y):
+                self._return_to_lobby()
+            elif self.CUTSCENE_PAUSE_BUTTON.contains(x, y):
+                self.cutscene_paused = not self.cutscene_paused
+            elif self.CUTSCENE_FAST_FORWARD_BUTTON.contains(x, y):
+                self.cutscene_fast_forward = not self.cutscene_fast_forward
+            else:
+                self._request_cutscene_advance()
+
+    def _toggle_game_pause(self) -> None:
+        self.game_paused = not self.game_paused
+        if self.game_paused:
+            self.pressed.clear()
+            self.drag = None
+            self.fishing_reeling = False
+
+    def _handle_pause_event(self, event: object) -> None:
+        if event.type == p2.SDL_MOUSEMOTION:
+            self.mouse_screen_x = event.x
+            self.mouse_screen_y = WINDOW_HEIGHT - 1 - event.y
+        elif event.type == p2.SDL_MOUSEBUTTONDOWN and event.button == p2.SDL_BUTTON_LEFT:
+            x, y = event.x, WINDOW_HEIGHT - 1 - event.y
+            self.mouse_screen_x, self.mouse_screen_y = x, y
+            if self.PAUSE_QUIT_BUTTON.contains(x, y):
+                self._return_to_lobby()
+            elif self.PAUSE_RESUME_BUTTON.contains(x, y):
+                self.game_paused = False
 
     def _enter_game_over(self) -> None:
         if getattr(self, "game_over", False):
@@ -1813,8 +2292,8 @@ class Game:
         if self.RETRY_BUTTON.contains(x, y):
             self.restart_game()
             return True
-        if self.QUIT_BUTTON.contains(x, y):
-            self.running = False
+        if self.RETURN_TO_LOBBY_BUTTON.contains(x, y):
+            self._return_to_lobby()
             return True
         return False
 
@@ -1822,6 +2301,11 @@ class Game:
         self.toast = message
         self.toast_error = error
         self.toast_timer = seconds
+
+    def _advance_game_clock(self, dt: float) -> None:
+        self.game_minutes = (
+            self.game_minutes + dt * GAME_MINUTES_PER_REAL_SECOND
+        ) % GAME_DAY_MINUTES
 
     def _adjust_species_affinity(self, species: str, amount: int) -> int:
         current = self.species_affinity[species]
@@ -1875,10 +2359,24 @@ class Game:
         for event in p2.get_events():
             if event.type == p2.SDL_QUIT:
                 self.running = False
+                return
+            elif event.type == p2.SDL_KEYDOWN and event.key == p2.SDLK_ESCAPE:
+                if self.lobby_active or getattr(event, "repeat", 0):
+                    continue
+                if self.cutscene_active or self.game_over:
+                    self._return_to_lobby()
+                else:
+                    self._toggle_game_pause()
+            elif self.cutscene_active:
+                self._handle_cutscene_event(event)
+            elif self.game_paused:
+                self._handle_pause_event(event)
+            elif self.world_fade_remaining > 0.0:
+                continue
+            elif self.lobby_active:
+                self._handle_lobby_event(event)
             elif self.game_over:
-                if event.type == p2.SDL_KEYDOWN and event.key == p2.SDLK_ESCAPE:
-                    self.running = False
-                elif event.type == p2.SDL_MOUSEMOTION:
+                if event.type == p2.SDL_MOUSEMOTION:
                     self.mouse_screen_x = event.x
                     self.mouse_screen_y = WINDOW_HEIGHT - 1 - event.y
                 elif (
@@ -1889,6 +2387,10 @@ class Game:
                     self.mouse_screen_x = x
                     self.mouse_screen_y = y
                     self._activate_game_over_button(x, y)
+            elif self.sleeping:
+                continue
+            elif self.fishing_state != "idle":
+                self._handle_fishing_event(event)
             elif event.type == p2.SDL_KEYDOWN:
                 self._key_down(event)
             elif event.type == p2.SDL_KEYUP:
@@ -1908,6 +2410,8 @@ class Game:
                         self.drag = DragState(source, stack.item_id, x, y)
                     continue
                 if not self.inventory_open:
+                    if self._try_sleep_at_screen(x, y):
+                        continue
                     if not self._throw_equipped_at_screen(x, y):
                         self._use_primary_attack()
             elif event.type == p2.SDL_MOUSEMOTION:
@@ -1923,17 +2427,13 @@ class Game:
         key = event.key
         repeated = bool(getattr(event, "repeat", 0))
         if getattr(self, "game_over", False):
-            if key == p2.SDLK_ESCAPE:
-                self.running = False
             return
         if key in (p2.SDLK_w, p2.SDLK_a, p2.SDLK_s, p2.SDLK_d, p2.SDLK_LSHIFT, p2.SDLK_RSHIFT):
             self.pressed.add(key)
             return
         if repeated:
             return
-        if key == p2.SDLK_ESCAPE:
-            self.running = False
-        elif key == p2.SDLK_TAB:
+        if key == p2.SDLK_TAB:
             self.inventory_open = not self.inventory_open
             if self.inventory_open:
                 self.crafting_open = False
@@ -1952,6 +2452,17 @@ class Game:
             if self.player.take_damage(self.player.hp) > 0:
                 self._enter_game_over()
                 self.show_toast("HP가 모두 소진되어 쓰러졌습니다", error=True)
+
+    def _handle_fishing_event(self, event: object) -> None:
+        if event.type == p2.SDL_KEYDOWN:
+            if event.key != p2.SDLK_SPACE:
+                return
+            if self.fishing_state == "bite":
+                self._begin_fishing_minigame()
+            elif self.fishing_state == "minigame":
+                self.fishing_reeling = True
+        elif event.type == p2.SDL_KEYUP and event.key == p2.SDLK_SPACE:
+            self.fishing_reeling = False
 
     def _use_tool(self) -> None:
         tool = self.model.equipped_tool_definition
@@ -1984,6 +2495,9 @@ class Game:
             return
         if tool.action == "torch":
             self.show_toast("횃불을 밝혔습니다")
+            return
+        if tool.item_id == "fishing_rod":
+            self.show_toast("낚시 스팟 가까이에서 E 키를 누르세요", error=True)
             return
         if tool.action and self.player.start_action(tool.action):
             labels = {"attack": "공격", "axe": "도끼질", "mine": "채광", "fish": "낚시"}
@@ -2171,11 +2685,15 @@ class Game:
     def _current_placed_utilities(self) -> list[PlacedUtility]:
         return self.placed_utilities.setdefault(self.map_data.name, [])
 
-    def _nearest_placed_utility(self) -> PlacedUtility | None:
+    def _nearest_placed_utility(
+        self, item_id: str | None = None
+    ) -> PlacedUtility | None:
         maximum_distance = PLACED_UTILITY_SCREEN_DISTANCE / self.camera_zoom
         nearest: PlacedUtility | None = None
         nearest_distance = math.inf
         for utility in self._current_placed_utilities():
+            if item_id is not None and utility.item_id != item_id:
+                continue
             distance = math.hypot(
                 utility.x - self.player.x, utility.y - self.player.y
             )
@@ -2183,6 +2701,211 @@ class Game:
                 nearest = utility
                 nearest_distance = distance
         return nearest
+
+    def _nearest_fishing_spot(self) -> WorldRect | None:
+        maximum_distance = INTERACTION_SCREEN_DISTANCE / self.camera_zoom
+        nearest: WorldRect | None = None
+        nearest_distance = math.inf
+        for spot in self.map_data.fishing_spots:
+            closest_x = min(max(self.player.x, spot.left), spot.right)
+            closest_y = min(max(self.player.y, spot.bottom), spot.top)
+            distance = math.hypot(
+                self.player.x - closest_x, self.player.y - closest_y
+            )
+            if distance <= maximum_distance and distance < nearest_distance:
+                nearest = spot
+                nearest_distance = distance
+        return nearest
+
+    def _start_fishing(self, spot: WorldRect) -> None:
+        held = self.model.tool_slot
+        if held is None or held.item_id != "fishing_rod":
+            self.show_toast("낚싯대를 툴바에 장착해야 합니다", error=True)
+            return
+        self.fishing_state = "waiting"
+        self.fishing_bite_timer = random.uniform(
+            FISHING_BITE_MIN_SECONDS, FISHING_BITE_MAX_SECONDS
+        )
+        self.fishing_reaction_timer = 0.0
+        self.fishing_tension = 0.0
+        self.fishing_capture = 0.0
+        self.fishing_danger_timer = 0.0
+        self.fishing_reeling = False
+        self.active_fishing_spot = spot
+        self.fishing_direction = self.player.direction
+        self.fishing_origin = (self.player.x, self.player.y)
+        self.inventory_open = False
+        self.crafting_open = False
+        self.drag = None
+        self.pressed.clear()
+        self.player.start_action("fish")
+        self.show_toast("낚시 시작 · 입질 신호를 기다리세요")
+
+    def _begin_fishing_minigame(self) -> None:
+        held = self.model.tool_slot
+        if held is None or held.item_id != "fishing_rod":
+            self._finish_fishing(False, "낚싯대가 없어 낚시를 중단했습니다")
+            return
+        broke, remaining, label = self._wear_equipped_item(SlotRef.tool(), 2)
+        if broke:
+            self._finish_fishing(False, f"{label}이(가) 부러져 물고기를 놓쳤습니다")
+            return
+        self.fishing_state = "minigame"
+        self.fishing_reeling = True
+        self.fishing_tension = 0.0
+        self.fishing_capture = 0.0
+        self.fishing_danger_timer = 0.0
+        self.show_toast(
+            f"Space 누르기/놓기로 장력 조절 · 낚싯대 {remaining}/30",
+            seconds=2.4,
+        )
+
+    def _finish_fishing(self, success: bool, message: str) -> None:
+        if success:
+            collected, remainder = self._give_loot(
+                "fish", 1, self.player.x, self.player.y
+            )
+            if collected:
+                message = "생선을 낚았습니다 · 인벤토리에 생선 1개 추가"
+            elif remainder:
+                message = "생선을 낚았지만 인벤토리가 가득 차 바닥에 떨어졌습니다"
+        self.fishing_state = "idle"
+        self.fishing_bite_timer = 0.0
+        self.fishing_reaction_timer = 0.0
+        self.fishing_reeling = False
+        self.fishing_danger_timer = 0.0
+        self.active_fishing_spot = None
+        self.player._set_state("idle")
+        self.fishing_direction = None
+        self.fishing_origin = None
+        self.show_toast(message, error=not success, seconds=2.5)
+
+    def _update_fishing(self, dt: float) -> None:
+        if self.fishing_origin is not None:
+            self.player.x, self.player.y = self.fishing_origin
+        if self.fishing_direction is not None:
+            self.player.direction = self.fishing_direction
+        if self.player.state != "fish":
+            self.player.start_action("fish")
+        else:
+            self.player._advance_animation(dt)
+
+        if self.fishing_state == "waiting":
+            self.fishing_bite_timer -= dt
+            if self.fishing_bite_timer <= 0.0:
+                self.fishing_state = "bite"
+                self.fishing_reaction_timer = FISHING_REACTION_SECONDS
+                self.show_toast("입질! 제한 시간 안에 Spacebar를 누르세요!", seconds=1.3)
+            return
+        if self.fishing_state == "bite":
+            self.fishing_reaction_timer -= dt
+            if self.fishing_reaction_timer <= 0.0:
+                self._finish_fishing(False, "입질에 늦게 반응해 물고기가 도망갔습니다")
+            return
+        if self.fishing_state != "minigame":
+            return
+
+        tension_delta = (
+            FISHING_TENSION_RISE_PER_SECOND
+            if self.fishing_reeling
+            else -FISHING_TENSION_FALL_PER_SECOND
+        )
+        self.fishing_tension = min(
+            max(self.fishing_tension + tension_delta * dt, 0.0), 100.0
+        )
+        in_safe_range = (
+            FISHING_SAFE_TENSION_MIN
+            <= self.fishing_tension
+            <= FISHING_SAFE_TENSION_MAX
+        )
+        if in_safe_range:
+            self.fishing_capture = min(
+                100.0,
+                self.fishing_capture + FISHING_CAPTURE_PER_SECOND * dt,
+            )
+        else:
+            self.fishing_capture = max(
+                0.0,
+                self.fishing_capture - FISHING_CAPTURE_LOSS_PER_SECOND * dt,
+            )
+
+        in_danger = (
+            self.fishing_tension <= FISHING_DANGER_TENSION_MIN
+            or self.fishing_tension >= FISHING_DANGER_TENSION_MAX
+        )
+        if in_danger:
+            self.fishing_danger_timer += dt
+        else:
+            self.fishing_danger_timer = max(
+                0.0, self.fishing_danger_timer - dt * 2.0
+            )
+        if self.fishing_danger_timer >= FISHING_DANGER_HOLD_SECONDS:
+            self._finish_fishing(False, "위험 장력이 오래 유지되어 물고기를 놓쳤습니다")
+        elif self.fishing_capture >= 100.0:
+            self._finish_fishing(True, "")
+
+    def _placed_bedding_at_screen(
+        self, screen_x: float, screen_y: float
+    ) -> PlacedUtility | None:
+        width, height = PLACED_UTILITY_WORLD_SIZES["travel_bedding"]
+        for utility in reversed(self._current_placed_utilities()):
+            if utility.item_id != "travel_bedding":
+                continue
+            center_x, center_y = self.world_to_screen(utility.x, utility.y)
+            rect = Rect(
+                center_x,
+                center_y,
+                width * self.camera_zoom,
+                height * self.camera_zoom,
+            )
+            if rect.contains(screen_x, screen_y):
+                return utility
+        return None
+
+    def _sleep_is_available(self) -> bool:
+        minute = self.game_minutes % GAME_DAY_MINUTES
+        return minute >= SLEEP_ALLOWED_START_MINUTES or minute < SLEEP_WAKE_MINUTES
+
+    def _try_sleep_at_screen(self, screen_x: float, screen_y: float) -> bool:
+        bedding = self._placed_bedding_at_screen(screen_x, screen_y)
+        if bedding is None:
+            return False
+
+        maximum_distance = PLACED_UTILITY_SCREEN_DISTANCE / self.camera_zoom
+        distance = math.hypot(
+            bedding.x - self.player.x, bedding.y - self.player.y
+        )
+        if distance > maximum_distance:
+            self.show_toast("간이 침구 가까이에서 잠을 잘 수 있습니다", error=True)
+            return True
+        if not self._sleep_is_available():
+            self.show_toast("간이 침구는 오후 05:00부터 사용할 수 있습니다", error=True)
+            return True
+
+        self.sleep_bedding = bedding
+        self.sleep_minutes_remaining = (
+            SLEEP_WAKE_MINUTES - self.game_minutes
+        ) % GAME_DAY_MINUTES
+        self.pressed.clear()
+        self.inventory_open = False
+        self.crafting_open = False
+        self.drag = None
+        self.player._set_state("idle")
+        self.show_toast("", seconds=0.0)
+        return True
+
+    def _update_sleep(self, dt: float) -> None:
+        advance = min(
+            self.sleep_minutes_remaining,
+            dt * SLEEP_FAST_FORWARD_MINUTES_PER_REAL_SECOND,
+        )
+        self.game_minutes = (self.game_minutes + advance) % GAME_DAY_MINUTES
+        self.sleep_minutes_remaining -= advance
+        if self.sleep_minutes_remaining <= 1e-6:
+            self.game_minutes = SLEEP_WAKE_MINUTES
+            self.sleep_minutes_remaining = 0.0
+            self.sleep_bedding = None
+            self.show_toast("푹 자고 일어났습니다 · 오전 08:00")
 
     def _utility_placement_position(
         self, item_id: str
@@ -2257,6 +2980,14 @@ class Game:
         self._current_placed_utilities().remove(utility)
         self.show_toast(f"{ITEMS[utility.item_id].label}을(를) 회수했습니다")
 
+    def _cook_equipped_fish(self) -> None:
+        stack = self.model.tool_slot
+        if stack is None or stack.item_id != "fish":
+            return
+        count = stack.count
+        self.model.tool_slot = ItemStack("cooked_fish", count)
+        self.show_toast(f"모닥불에서 생선 {count}개를 익혔습니다")
+
     @staticmethod
     def _entity_label(entity_type: str) -> str:
         return {
@@ -2293,14 +3024,28 @@ class Game:
         return nearest
 
     def _interact_world(self) -> bool:
+        held = self.model.tool_slot
+        if held is not None and held.item_id == "fish":
+            campfire = self._nearest_placed_utility("campfire")
+            if campfire is not None:
+                self._cook_equipped_fish()
+                return True
+            return False
+        if held is not None and held.item_id == "cooked_fish":
+            return False
+
         utility = self._nearest_placed_utility()
         if utility is not None:
             self._pickup_placed_utility(utility)
             return True
-        held = self.model.tool_slot
         if held is not None and held.item_id in INSTALLABLE_ITEM_IDS:
             self._place_utility(held.item_id)
             return True
+        if held is not None and held.item_id == "fishing_rod":
+            fishing_spot = self._nearest_fishing_spot()
+            if fishing_spot is not None:
+                self._start_fishing(fishing_spot)
+                return True
         entity = self._nearest_interactable()
         if entity is None:
             return False
@@ -2836,11 +3581,18 @@ class Game:
         values = tuple(self.species_affinity.values())
         if all(value == AFFINITY_MAX for value in values):
             return "완전한 화해 엔딩"
-        if all(value >= 80 for value in values):
-            return "공존 엔딩"
-        if any(value < 40 for value in values):
-            return "대립 엔딩"
-        return "불안한 휴전 엔딩"
+        return "대립 엔딩"
+
+    def _begin_ending_cutscene(self) -> None:
+        self.ending_variant = self._affinity_ending()
+        sequence = (
+            RECONCILIATION_ENDING_CUTSCENE_PATHS
+            if self.ending_variant == "완전한 화해 엔딩"
+            else CONFLICT_ENDING_CUTSCENE_PATHS
+        )
+        self.ending_timer = 0.0
+        self.player._set_state("idle")
+        self._start_cutscene(sequence, "ending")
 
     def _update_transition(self) -> None:
         transition = self.map_data.transition_at(self.player.x, self.player.y)
@@ -2850,16 +3602,7 @@ class Game:
         if not self.transition_armed:
             return
         if transition.ends_game:
-            self.ending_variant = self._affinity_ending()
-            self.ending_timer = 1.75
-            self.pressed.clear()
-            self.player._set_state("idle")
-            values = self.species_affinity
-            self.show_toast(
-                f"{self.ending_variant} · 까마귀 {values['crow']} · "
-                f"늑대 {values['wolf']} · 곰 {values['bear']}",
-                seconds=1.75,
-            )
+            self._begin_ending_cutscene()
             self.transition_armed = False
             return
         if transition.target_map is None:
@@ -2868,6 +3611,19 @@ class Game:
         self.show_toast(f"{self.map_data.label}(으)로 이동했습니다")
 
     def update(self, dt: float) -> None:
+        if self.game_paused:
+            return
+        if self.cutscene_active:
+            self._update_cutscene(dt)
+            return
+        if self.world_fade_remaining > 0.0:
+            self.world_fade_remaining = max(
+                0.0, self.world_fade_remaining - dt
+            )
+            return
+        if self.lobby_active:
+            self._update_lobby(dt)
+            return
         if self.player.dead and not self.game_over:
             self._enter_game_over()
         if self.game_over:
@@ -2875,23 +3631,31 @@ class Game:
             # other mutable world system remains frozen.
             self.player.update(dt, set())
             return
-        self._update_entity_timers(dt)
-        if self.ending_timer > 0:
-            self.ending_timer -= dt
-            if self.ending_timer <= 0:
-                self.running = False
-        else:
-            self.player.update(dt, self.pressed, self._resolve_player_movement)
-            self._update_enemies(dt)
-            if not self.game_over:
-                self._update_projectiles(dt)
-                self._update_camera()
-                self._auto_pickup_world_items()
-                self._update_transition()
+        if self.sleeping:
+            self._update_sleep(dt)
+            return
         if self.toast_timer > 0:
             self.toast_timer -= dt
             if self.toast_timer <= 0:
                 self.toast = ""
+        if self.fishing_state != "idle":
+            self._advance_game_clock(dt)
+            self._update_fishing(dt)
+            return
+        self._advance_game_clock(dt)
+        self._update_entity_timers(dt)
+        self.player.update(
+            dt,
+            self.pressed,
+            self._resolve_player_movement,
+            stamina_recovery_multiplier(self.game_minutes),
+        )
+        self._update_enemies(dt)
+        if not self.game_over:
+            self._update_projectiles(dt)
+            self._update_camera()
+            self._auto_pickup_world_items()
+            self._update_transition()
 
     def _world_image(self, path: Path) -> p2.Image:
         image = self._world_image_cache.get(path)
@@ -3008,24 +3772,17 @@ class Game:
         )
 
     def _draw_species_affinity(self) -> None:
-        panel_left = 12.0
-        panel_right = 216.0
-        panel_bottom = 483.0
-        panel_top = 607.0
-        p2.draw_rectangle(
-            panel_left,
-            panel_bottom,
-            panel_right,
-            panel_top,
-            18,
-            23,
-            22,
-            218,
-            True,
+        self.ui.draw_hud_panel(
+            self.ui.HUD_COLUMN_LEFT, 483, self.ui.HUD_COLUMN_RIGHT, 607
         )
         self.ui.font_small.draw(19, 589, "종 호감도", (255, 238, 205))
         rows = (("crow", 558.0), ("wolf", 530.0), ("bear", 502.0))
         for species, bottom in rows:
+            bar_left = 101.0
+            bar_right = self.ui.HUD_COLUMN_RIGHT - 6
+            bar_top = bottom + 16.0
+            row_center_y = (bottom + bar_top) / 2
+            label_y = row_center_y + 2
             value = self.species_affinity[species]
             relationship = affinity_relationship(value)
             color = AFFINITY_COLORS[relationship]
@@ -3037,16 +3794,13 @@ class Game:
                 256,
                 256,
                 29,
-                bottom + 9,
+                row_center_y,
                 28,
                 28,
             )
             self.ui.font_small.draw(
-                43, bottom + 3, SPECIES_LABELS[species], (245, 231, 198)
+                43, label_y, SPECIES_LABELS[species], (245, 231, 198)
             )
-            bar_left = 101.0
-            bar_right = 210.0
-            bar_top = bottom + 16.0
             p2.draw_rectangle(
                 bar_left, bottom, bar_right, bar_top, 40, 42, 40, 255, True
             )
@@ -3066,9 +3820,425 @@ class Game:
                 255,
                 False,
             )
-            self.ui.font_small.draw(
-                166, bottom + 2, f"{value}/100", (255, 255, 255)
+            self._draw_centered_text(
+                self.ui.font_small,
+                label_y,
+                f"{value}/100",
+                (255, 255, 255),
+                center_x=(bar_left + bar_right) / 2,
             )
+
+    def _night_vision_radius(self) -> float:
+        held = self.model.tool_slot
+        if held is not None and held.item_id == "torch":
+            return TORCH_VISION_RADIUS
+        return NIGHT_VISION_RADIUS
+
+    def _draw_night_overlay(self, center_x: float, center_y: float) -> None:
+        """Darken the world and leave a feathered player-centered sight circle."""
+        progress = night_darkness_progress(self.game_minutes)
+        if progress <= 0.0:
+            return
+
+        pico_core.SDL_SetRenderDrawBlendMode(
+            pico_core.renderer, pico_core.SDL_BLENDMODE_BLEND
+        )
+        ambient_alpha = round(NIGHT_AMBIENT_ALPHA * progress)
+        p2.draw_rectangle(
+            0,
+            0,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+            4,
+            15,
+            29,
+            ambient_alpha,
+            True,
+        )
+
+        exterior_alpha = round(NIGHT_EXTERIOR_ALPHA * progress ** 1.35)
+        if exterior_alpha <= 0:
+            pico_core.SDL_SetRenderDrawBlendMode(
+                pico_core.renderer, pico_core.SDL_BLENDMODE_NONE
+            )
+            return
+
+        half_mask = NIGHT_MASK_SIZE / 2.0
+        mask_left = center_x - half_mask
+        mask_right = center_x + half_mask
+        mask_bottom = center_y - half_mask
+        mask_top = center_y + half_mask
+
+        def draw_exterior(left: float, bottom: float, right: float, top: float) -> None:
+            left = max(0.0, left)
+            bottom = max(0.0, bottom)
+            right = min(float(WINDOW_WIDTH), right)
+            top = min(float(WINDOW_HEIGHT), top)
+            if right <= left or top <= bottom:
+                return
+            p2.draw_rectangle(
+                left,
+                bottom,
+                right,
+                top,
+                1,
+                5,
+                12,
+                exterior_alpha,
+                True,
+            )
+
+        draw_exterior(0, mask_top, WINDOW_WIDTH, WINDOW_HEIGHT)
+        draw_exterior(0, 0, WINDOW_WIDTH, mask_bottom)
+        draw_exterior(0, mask_bottom, mask_left, mask_top)
+        draw_exterior(mask_right, mask_bottom, WINDOW_WIDTH, mask_top)
+        pico_core.SDL_SetRenderDrawBlendMode(
+            pico_core.renderer, pico_core.SDL_BLENDMODE_NONE
+        )
+
+        held = self.model.tool_slot
+        mask = self._night_mask_images[
+            held is not None and held.item_id == "torch"
+        ]
+        mask.opacify(exterior_alpha / 255.0)
+        mask.draw(center_x, center_y, NIGHT_MASK_SIZE, NIGHT_MASK_SIZE)
+        mask.opacify(1.0)
+
+    def _draw_game_clock(self) -> None:
+        period = game_time_period(self.game_minutes)
+        label = f"{period} {format_game_time(self.game_minutes)}"
+        self._draw_hud_label(label, 1116, 1268)
+
+    def _draw_hud_label(self, label: str, left: float, right: float) -> None:
+        self.ui.draw_hud_panel(left, 678, right, 710)
+        self._draw_centered_text(
+            self.ui.font, 694, label, (255, 236, 183), center_x=(left + right) / 2
+        )
+
+    @staticmethod
+    def _draw_black_overlay(alpha: int) -> None:
+        alpha = min(max(int(alpha), 0), 255)
+        if alpha <= 0:
+            return
+        pico_core.SDL_SetRenderDrawBlendMode(
+            pico_core.renderer, pico_core.SDL_BLENDMODE_BLEND
+        )
+        p2.draw_rectangle(
+            0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0, 0, alpha, True
+        )
+        pico_core.SDL_SetRenderDrawBlendMode(
+            pico_core.renderer, pico_core.SDL_BLENDMODE_NONE
+        )
+
+    def _draw_cutscene(self) -> None:
+        p2.draw_rectangle(
+            0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0, 0, 255, True
+        )
+        path = self.cutscene_sequence[
+            min(self.cutscene_index, len(self.cutscene_sequence) - 1)
+        ]
+        image = self._cutscene_image(path)
+        scene_height = WINDOW_HEIGHT - CUTSCENE_CONTROLS_HEIGHT
+        scale = min(WINDOW_WIDTH / image.w, scene_height / image.h)
+        image.draw(
+            WINDOW_WIDTH / 2,
+            CUTSCENE_CONTROLS_HEIGHT + scene_height / 2,
+            image.w * scale,
+            image.h * scale,
+        )
+
+        fade_out_start = CUTSCENE_FADE_SECONDS + CUTSCENE_HOLD_SECONDS
+        if self.cutscene_elapsed < CUTSCENE_FADE_SECONDS:
+            progress = self.cutscene_elapsed / CUTSCENE_FADE_SECONDS
+            blackout_alpha = round(255 * (1.0 - progress))
+        elif self.cutscene_elapsed < fade_out_start:
+            blackout_alpha = 0
+        else:
+            progress = (
+                self.cutscene_elapsed - fade_out_start
+            ) / CUTSCENE_FADE_SECONDS
+            blackout_alpha = round(255 * min(max(progress, 0.0), 1.0))
+        self._draw_black_overlay(blackout_alpha)
+        self._draw_cutscene_controls()
+
+    def _draw_cutscene_controls(self) -> None:
+        pause = self.CUTSCENE_PAUSE_BUTTON
+        fast_forward = self.CUTSCENE_FAST_FORWARD_BUTTON
+        skip = self.CUTSCENE_SKIP_BUTTON
+        self._draw_hud_button(pause, active=self.cutscene_paused)
+        self._draw_hud_button(fast_forward, active=self.cutscene_fast_forward)
+        self._draw_hud_button(skip)
+        pause_icon = self.ui.PLAY_ICON if self.cutscene_paused else self.ui.PAUSE_ICON
+        self.ui.draw_hud_icon(pause_icon, pause.cx, pause.cy)
+        self.ui.draw_hud_icon(self.ui.FAST_FORWARD_ICON, fast_forward.cx, fast_forward.cy)
+        self._draw_centered_text(
+            self.ui.font, skip.cy + 1, "SKIP", (255, 230, 174), center_x=skip.cx
+        )
+
+    def _draw_hud_button(self, rect: Rect, *, active: bool = False) -> None:
+        self.ui.draw_hud_panel(rect.left, rect.bottom, rect.right, rect.top)
+        hovered = rect.contains(self.mouse_screen_x, self.mouse_screen_y)
+        if active or hovered:
+            fill_color = (98, 72, 37) if active else (64, 48, 31)
+            p2.draw_rectangle(
+                rect.left + 2,
+                rect.bottom + 2,
+                rect.right - 2,
+                rect.top - 2,
+                *fill_color,
+                255,
+                True,
+            )
+
+    def _draw_world_fade(self) -> None:
+        if self.world_fade_remaining <= 0.0:
+            return
+        alpha = round(
+            255 * self.world_fade_remaining / LOBBY_FADE_SECONDS
+        )
+        self._draw_black_overlay(alpha)
+
+    def _draw_lobby(self) -> None:
+        self.lobby_background.draw(
+            WINDOW_WIDTH / 2,
+            WINDOW_HEIGHT / 2,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+        )
+
+        # A soft shadow keeps the title readable without hiding the artwork.
+        self._draw_centered_text(
+            self.ui.font_lobby_title,
+            548,
+            GAME_TITLE,
+            (25, 18, 26),
+            offset_x=4,
+            offset_y=-5,
+        )
+        self._draw_centered_text(
+            self.ui.font_lobby_title,
+            548,
+            GAME_TITLE,
+            (255, 224, 157),
+        )
+        for rect, label in (
+            (self.LOBBY_START_BUTTON, "게임 시작"),
+            (self.LOBBY_QUIT_BUTTON, "게임 종료"),
+        ):
+            hovered = (
+                not self.lobby_transition
+                and rect.contains(self.mouse_screen_x, self.mouse_screen_y)
+            )
+            draw_width = 432 if hovered else 420
+            draw_height = 144 if hovered else 140
+            self.lobby_button_image.opacify(1.0 if hovered else 0.92)
+            self.lobby_button_image.draw(
+                rect.cx,
+                rect.cy,
+                draw_width,
+                draw_height,
+            )
+            self.lobby_button_image.opacify(1.0)
+            text_color = (255, 239, 194) if hovered else (232, 216, 184)
+            self._draw_centered_text(
+                self.ui.font_lobby_button,
+                rect.cy,
+                label,
+                text_color,
+            )
+
+        if self.lobby_transition:
+            progress = min(
+                self.lobby_transition_elapsed / LOBBY_FADE_SECONDS,
+                1.0,
+            )
+            self._draw_black_overlay(round(255 * progress))
+
+    @staticmethod
+    def _draw_centered_text(
+        font: p2.Font,
+        center_y: float,
+        text: str,
+        color: tuple[int, int, int],
+        *,
+        center_x: float = WINDOW_WIDTH / 2,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+    ) -> None:
+        width = GameUI.measure_text_width(font, text)
+        font.draw(
+            center_x - width / 2 + offset_x,
+            center_y + offset_y,
+            text,
+            color,
+        )
+
+    def _draw_sleep_overlay(self) -> None:
+        if not self.sleeping:
+            return
+        pico_core.SDL_SetRenderDrawBlendMode(
+            pico_core.renderer, pico_core.SDL_BLENDMODE_BLEND
+        )
+        p2.draw_rectangle(
+            0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 2, 6, 14, 95, True
+        )
+        pico_core.SDL_SetRenderDrawBlendMode(
+            pico_core.renderer, pico_core.SDL_BLENDMODE_NONE
+        )
+
+    def _draw_fishing_ui(self, player_x: float, player_y: float) -> None:
+        if self.fishing_state == "idle":
+            return
+
+        panel_width = 278.0
+        panel_height = 100.0
+        panel_left = min(
+            max(player_x - panel_width / 2.0, 12.0),
+            WINDOW_WIDTH - panel_width - 12.0,
+        )
+        panel_bottom = min(
+            player_y + CHARACTER_HEIGHT * self.camera_zoom + 20.0,
+            WINDOW_HEIGHT - panel_height - 48.0,
+        )
+        panel_right = panel_left + panel_width
+        panel_top = panel_bottom + panel_height
+        p2.draw_rectangle(
+            panel_left,
+            panel_bottom,
+            panel_right,
+            panel_top,
+            16,
+            21,
+            25,
+            225,
+            True,
+        )
+        p2.draw_rectangle(
+            panel_left,
+            panel_bottom,
+            panel_right,
+            panel_top,
+            235,
+            224,
+            194,
+            220,
+            False,
+        )
+
+        if self.fishing_state == "waiting":
+            status = "입질을 기다리는 중..."
+            status_color = (255, 236, 183)
+        elif self.fishing_state == "bite":
+            status = "! 입질!  SPACEBAR !"
+            status_color = (255, 184, 92)
+        else:
+            status = "SPACE 누르기: 감기  ·  놓기: 풀기"
+            status_color = (220, 232, 240)
+        self.ui.font_small.draw(
+            panel_left + 12.0,
+            panel_top - 22.0,
+            status,
+            status_color,
+        )
+
+        bar_left = panel_left + 61.0
+        bar_right = panel_right - 12.0
+        capture_bottom = panel_bottom + 45.0
+        tension_bottom = panel_bottom + 14.0
+        bar_height = 17.0
+        self.ui.font_small.draw(
+            panel_left + 11.0,
+            capture_bottom + 1.0,
+            "포획",
+            (222, 238, 245),
+        )
+        self.ui.font_small.draw(
+            panel_left + 11.0,
+            tension_bottom + 1.0,
+            "장력",
+            (222, 238, 245),
+        )
+
+        for bottom in (capture_bottom, tension_bottom):
+            p2.draw_rectangle(
+                bar_left,
+                bottom,
+                bar_right,
+                bottom + bar_height,
+                5,
+                8,
+                12,
+                245,
+                True,
+            )
+
+        capture_right = bar_left + (
+            (bar_right - bar_left) * self.fishing_capture / 100.0
+        )
+        if capture_right > bar_left:
+            p2.draw_rectangle(
+                bar_left,
+                capture_bottom,
+                capture_right,
+                capture_bottom + bar_height,
+                71,
+                181,
+                223,
+                255,
+                True,
+            )
+
+        safe_left = bar_left + (
+            (bar_right - bar_left) * FISHING_SAFE_TENSION_MIN / 100.0
+        )
+        safe_right = bar_left + (
+            (bar_right - bar_left) * FISHING_SAFE_TENSION_MAX / 100.0
+        )
+        tension_right = bar_left + (
+            (bar_right - bar_left) * self.fishing_tension / 100.0
+        )
+        if (
+            self.fishing_tension <= FISHING_DANGER_TENSION_MIN
+            or self.fishing_tension >= FISHING_DANGER_TENSION_MAX
+        ):
+            tension_color = (235, 75, 68)
+        elif FISHING_SAFE_TENSION_MIN <= self.fishing_tension <= FISHING_SAFE_TENSION_MAX:
+            tension_color = (91, 205, 111)
+        else:
+            tension_color = (239, 182, 72)
+        if tension_right > bar_left:
+            p2.draw_rectangle(
+                bar_left,
+                tension_bottom,
+                tension_right,
+                tension_bottom + bar_height,
+                *tension_color,
+                235,
+                True,
+            )
+        p2.draw_rectangle(
+            safe_left,
+            tension_bottom,
+            safe_right,
+            tension_bottom + bar_height,
+            176,
+            241,
+            154,
+            220,
+            False,
+        )
+        self.ui.font_small.draw(
+            bar_right - 37.0,
+            capture_bottom + 1.0,
+            f"{int(self.fishing_capture)}%",
+            (245, 249, 252),
+        )
+        self.ui.font_small.draw(
+            bar_right - 37.0,
+            tension_bottom + 1.0,
+            f"{int(self.fishing_tension)}%",
+            (245, 249, 252),
+        )
 
     def _draw_aim_indicator(self) -> None:
         if (
@@ -3133,82 +4303,70 @@ class Game:
             draw_height,
         )
 
-    def _draw_game_over(self) -> None:
-        panel = self.GAME_OVER_PANEL
-        p2.draw_rectangle(
-            0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 7, 9, 12, 185, True
-        )
-        p2.draw_rectangle(
-            panel.left - 5,
-            panel.bottom - 5,
-            panel.right + 5,
-            panel.top + 5,
-            139,
-            48,
-            49,
-            255,
-            True,
-        )
-        p2.draw_rectangle(
-            panel.left,
-            panel.bottom,
-            panel.right,
-            panel.top,
-            28,
-            25,
-            27,
-            250,
-            True,
-        )
-        self.ui.font_game_over.draw(
-            panel.cx - 119, panel.top - 82, "게임 오버", (255, 112, 104)
-        )
-        self.ui.font.draw(
-            panel.cx - 139,
-            panel.top - 126,
-            "HP가 모두 소진되어 쓰러졌습니다",
-            (238, 225, 207),
+    def _draw_pause_menu(self) -> None:
+        self._draw_game_dialog(
+            "게임을 그만두시겠습니까?",
+            (
+                (self.PAUSE_QUIT_BUTTON, "게임 종료"),
+                (self.PAUSE_RESUME_BUTTON, "게임으로 돌아가기"),
+            ),
         )
 
-        for rect, label, primary in (
-            (self.RETRY_BUTTON, "다시 하기", True),
-            (self.QUIT_BUTTON, "종료", False),
-        ):
-            hovered = rect.contains(self.mouse_screen_x, self.mouse_screen_y)
-            if primary:
-                color = (185, 67, 61) if hovered else (153, 53, 50)
-            else:
-                color = (91, 91, 91) if hovered else (67, 67, 69)
-            p2.draw_rectangle(
-                rect.left,
-                rect.bottom,
-                rect.right,
-                rect.top,
-                *color,
-                255,
-                True,
+    def _draw_game_over(self) -> None:
+        self._draw_game_dialog(
+            "게임 오버",
+            (
+                (self.RETRY_BUTTON, "다시 하기"),
+                (self.RETURN_TO_LOBBY_BUTTON, "로비로"),
+            ),
+            description="HP가 모두 소진되어 쓰러졌습니다",
+        )
+
+    def _draw_game_dialog(
+        self,
+        title: str,
+        buttons: tuple[tuple[Rect, str], ...],
+        *,
+        description: str = "",
+    ) -> None:
+        self._draw_black_overlay(135)
+        panel = self.DIALOG_PANEL
+        self.ui.draw_hud_panel(panel.left, panel.bottom, panel.right, panel.top)
+        text_color = (255, 230, 174)
+        self._draw_centered_text(
+            self.ui.font_title,
+            panel.top - (32 if description else 44),
+            title,
+            text_color,
+            center_x=panel.cx,
+        )
+        if description:
+            self._draw_centered_text(
+                self.ui.font,
+                panel.top - 62,
+                description,
+                (232, 216, 184),
+                center_x=panel.cx,
             )
-            p2.draw_rectangle(
-                rect.left,
-                rect.bottom,
-                rect.right,
-                rect.top,
-                242,
-                222,
-                194,
-                255,
-                False,
-            )
-            label_offset = 39 if primary else 19
-            self.ui.font_title.draw(
-                rect.cx - label_offset,
-                rect.cy - 9,
-                label,
-                (255, 244, 224),
+        for rect, label in buttons:
+            self._draw_hud_button(rect)
+            self._draw_centered_text(
+                self.ui.font, rect.cy + 1, label, text_color, center_x=rect.cx
             )
 
     def draw(self, *, present: bool = True) -> None:
         p2.clear_canvas()
+        if self.cutscene_active:
+            self._draw_cutscene()
+            if present:
+                p2.update_canvas()
+            return
+        if self.lobby_active:
+            self._draw_lobby()
+            self._draw_world_fade()
+            if present:
+                p2.update_canvas()
+            return
         p2.draw_rectangle(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1, 12, 18, 21, 255, True)
         if self.map_background is not None:
             background_x, background_y = self.world_to_screen(
@@ -3268,6 +4426,10 @@ class Game:
                     draw_width,
                     draw_height,
                 )
+                if utility is self.sleep_bedding:
+                    self.player.draw_sleeping(
+                        Rect(utility_x, utility_y, draw_width, draw_height)
+                    )
         for drop in self.world_drops[self.map_data.name]:
             drop_x, drop_y = self.world_to_screen(drop.x, drop.y)
             if -50 <= drop_x <= WINDOW_WIDTH + 50 and -50 <= drop_y <= WINDOW_HEIGHT + 50:
@@ -3289,6 +4451,46 @@ class Game:
         for projectile in self._current_projectiles():
             self._draw_projectile(projectile)
         player_x, player_y = self.world_to_screen(self.player.x, self.player.y)
+        bedding = self.sleep_bedding
+        if bedding is None:
+            self._draw_awake_player(player_x, player_y)
+            sight_x = player_x
+            sight_y = player_y + CHARACTER_HEIGHT * self.camera_zoom / 2.0
+        else:
+            sight_x, sight_y = self.world_to_screen(bedding.x, bedding.y)
+        self._draw_night_overlay(sight_x, sight_y)
+        self._draw_sleep_overlay()
+        self._draw_fishing_ui(player_x, player_y)
+        self._draw_hud_label(
+            self.map_data.label, self.ui.HUD_COLUMN_LEFT, self.ui.HUD_COLUMN_RIGHT
+        )
+        self._draw_game_clock()
+        self.ui.draw_status_bars(self.player)
+        self._draw_species_affinity()
+        hovered_slot = None
+        if not (self.crafting_open or self.game_paused or self.game_over):
+            hovered_slot = self.ui.slot_at(
+                self.mouse_screen_x, self.mouse_screen_y, self.inventory_open
+            )
+        self.ui.draw(
+            self.inventory_open,
+            self.crafting_open,
+            self.drag,
+            "" if self.game_over else self.toast,
+            self.toast_error,
+            hovered_slot,
+            self.mouse_screen_x,
+            self.mouse_screen_y,
+        )
+        if self.game_over:
+            self._draw_game_over()
+        self._draw_world_fade()
+        if self.game_paused:
+            self._draw_pause_menu()
+        if present:
+            p2.update_canvas()
+
+    def _draw_awake_player(self, player_x: float, player_y: float) -> None:
         self.ui.draw_equipped_world_tool(
             self.player,
             behind=True,
@@ -3305,21 +4507,79 @@ class Game:
             y=player_y,
             display_scale=self.camera_zoom,
         )
-        nearby_utility = self._nearest_placed_utility()
+        held = self.model.tool_slot
+        if self.fishing_state != "idle":
+            nearby_utility = None
+        elif held is not None and held.item_id == "fish":
+            nearby_utility = self._nearest_placed_utility("campfire")
+        elif held is not None and held.item_id == "cooked_fish":
+            nearby_utility = None
+        else:
+            nearby_utility = self._nearest_placed_utility()
         nearby: WorldEntity | None = None
         if nearby_utility is not None:
             prompt_x, prompt_y = self.world_to_screen(
                 nearby_utility.x, nearby_utility.y
             )
             label = ITEMS[nearby_utility.item_id].label
+            if (
+                nearby_utility.item_id == "campfire"
+                and held is not None
+                and held.item_id == "fish"
+            ):
+                prompt = "E · 생선 굽기"
+                prompt_offset = 49
+            elif (
+                nearby_utility.item_id == "campfire"
+                and held is not None
+                and held.item_id == "cooked_fish"
+            ):
+                prompt = "E · 익힌 생선 먹기"
+                prompt_offset = 65
+            elif nearby_utility.item_id == "travel_bedding":
+                prompt = "E · 회수 / 좌클릭 · 잠자기"
+                prompt_offset = 89
+            else:
+                prompt = f"E · {label} 회수"
+                prompt_offset = 45
             self.ui.font_small.draw(
-                prompt_x - 45,
+                prompt_x - prompt_offset,
                 prompt_y + 55,
-                f"E · {label} 회수",
+                prompt,
                 (255, 245, 176),
             )
-        else:
-            nearby = self._nearest_interactable()
+        elif self.fishing_state == "idle":
+            if held is not None and held.item_id in ("fish", "cooked_fish"):
+                label = ITEMS[held.item_id].label
+                self.ui.font_small.draw(
+                    player_x - 42,
+                    player_y + 55,
+                    f"E · {label} 먹기",
+                    (255, 245, 176),
+                )
+            else:
+                fishing_spot = (
+                    self._nearest_fishing_spot()
+                    if held is not None and held.item_id == "fishing_rod"
+                    else None
+                )
+            if (
+                held is not None
+                and held.item_id not in ("fish", "cooked_fish")
+                and fishing_spot is not None
+            ):
+                prompt_x, prompt_y = self.world_to_screen(
+                    fishing_spot.left + fishing_spot.width / 2.0,
+                    fishing_spot.bottom + fishing_spot.height / 2.0,
+                )
+                self.ui.font_small.draw(
+                    prompt_x - 42,
+                    prompt_y + 16,
+                    "E · 낚시 시작",
+                    (255, 245, 176),
+                )
+            elif held is None or held.item_id not in ("fish", "cooked_fish"):
+                nearby = self._nearest_interactable()
         if nearby is not None:
             rect = nearby.definition.rect
             prompt_x, prompt_y = self.world_to_screen(
@@ -3327,29 +4587,6 @@ class Game:
             )
             label = self._entity_label(nearby.definition.entity_type)
             self.ui.font_small.draw(prompt_x - 42, prompt_y + 10, f"E · {label}", (255, 245, 176))
-        p2.draw_rectangle(12, 678, 216, 710, 20, 25, 23, 205, True)
-        self.ui.font.draw(24, 690, self.map_data.label, (255, 236, 183))
-        self.ui.draw_status_bars(self.player)
-        self._draw_species_affinity()
-        hovered_slot = None
-        if not self.crafting_open:
-            hovered_slot = self.ui.slot_at(
-                self.mouse_screen_x, self.mouse_screen_y, self.inventory_open
-            )
-        self.ui.draw(
-            self.inventory_open,
-            self.crafting_open,
-            self.drag,
-            self.toast,
-            self.toast_error,
-            hovered_slot,
-            self.mouse_screen_x,
-            self.mouse_screen_y,
-        )
-        if self.game_over:
-            self._draw_game_over()
-        if present:
-            p2.update_canvas()
 
 
 def main() -> None:
@@ -3362,6 +4599,8 @@ def main() -> None:
             dt = min(max(now - previous, 0.0), 0.05)
             previous = now
             game.handle_events()
+            if not game.running:
+                break
             game.update(dt)
             game.draw()
             p2.delay(0.001)

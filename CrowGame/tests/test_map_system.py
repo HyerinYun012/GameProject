@@ -121,6 +121,11 @@ class MapSystemTests(unittest.TestCase):
         }
         self.assertTrue({"tree", "rock", "grass", "fruit_tree"}.issubset(resource_types))
 
+    def test_crow_and_wolf_maps_load_tiled_fishing_spots(self) -> None:
+        self.assertGreater(len(load_map_data("crow_map.json").fishing_spots), 0)
+        self.assertGreater(len(load_map_data("wolf_map.json").fishing_spots), 0)
+        self.assertEqual((), load_map_data("bear_map.json").fishing_spots)
+
 
 if __name__ == "__main__":
     unittest.main()

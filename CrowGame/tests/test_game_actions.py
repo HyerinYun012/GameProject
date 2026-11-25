@@ -5,6 +5,7 @@ import math
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -23,9 +24,35 @@ from CrowGame.main import (  # noqa: E402
     AI_SENSES,
     ANIMAL_ANIMATIONS,
     ANIMAL_STATS,
+    CONFLICT_ENDING_CUTSCENE_PATHS,
+    CUTSCENE_FADE_SECONDS,
+    CUTSCENE_HOLD_SECONDS,
+    FISHING_CAPTURE_LOSS_PER_SECOND,
+    FISHING_CAPTURE_PER_SECOND,
+    FISHING_DANGER_HOLD_SECONDS,
+    FISHING_DANGER_TENSION_MAX,
+    FISHING_DANGER_TENSION_MIN,
+    FISHING_REACTION_SECONDS,
+    FISHING_SAFE_TENSION_MAX,
+    FISHING_SAFE_TENSION_MIN,
+    FISHING_TENSION_FALL_PER_SECOND,
+    FISHING_TENSION_RISE_PER_SECOND,
+    GAME_START_MINUTES,
+    GAME_TITLE,
+    INTRO_CUTSCENE_PATHS,
+    LOBBY_BACKGROUND_PATH,
+    LOBBY_BUTTON_PATH,
+    LOBBY_FADE_SECONDS,
     MAX_HP,
     MAX_SP,
+    NIGHT_SP_RECOVERY_MULTIPLIER,
+    NIGHT_MASK_PATHS,
+    NIGHT_MASK_SIZE,
+    NIGHT_VISION_RADIUS,
     PROJECTILE_DAMAGE,
+    RECONCILIATION_ENDING_CUTSCENE_PATHS,
+    TORCH_VISION_RADIUS,
+    WINDOW_HEIGHT,
     WORLD_TILE_SIZE,
     DragState,
     EnemyAI,
@@ -33,10 +60,15 @@ from CrowGame.main import (  # noqa: E402
     GameUI,
     Player,
     PlacedUtility,
+    Rect,
     WorldDrop,
     WorldEntity,
     affinity_relationship,
     desired_map_species,
+    format_game_time,
+    game_time_period,
+    night_darkness_progress,
+    stamina_recovery_multiplier,
 )
 from CrowGame.map_system import FIRST_MAP, load_map_data  # noqa: E402
 
@@ -61,8 +93,32 @@ def make_game() -> Game:
     game.toast_timer = 0.0
     game.running = True
     game.game_over = False
+    game.game_paused = False
     game.pressed = set()
     game.ending_timer = 0.0
+    game.cutscene_sequence = ()
+    game.cutscene_kind = ""
+    game.cutscene_index = 0
+    game.cutscene_elapsed = 0.0
+    game.cutscene_fast_forward = False
+    game.cutscene_paused = False
+    game.world_fade_remaining = 0.0
+    game.lobby_active = False
+    game.lobby_transition = ""
+    game.lobby_transition_elapsed = 0.0
+    game.game_minutes = GAME_START_MINUTES
+    game.sleep_bedding = None
+    game.sleep_minutes_remaining = 0.0
+    game.fishing_state = "idle"
+    game.fishing_bite_timer = 0.0
+    game.fishing_reaction_timer = 0.0
+    game.fishing_tension = 0.0
+    game.fishing_capture = 0.0
+    game.fishing_danger_timer = 0.0
+    game.fishing_reeling = False
+    game.active_fishing_spot = None
+    game.fishing_direction = None
+    game.fishing_origin = None
     game.camera_zoom = 1.0
     game.map_data = load_map_data(FIRST_MAP)
     game.camera_x = game.player.x
@@ -92,7 +148,62 @@ def place_near_entity(game: Game, map_name: str, entity_type: str) -> WorldEntit
     return entity
 
 
+def prepare_fishing_game() -> Game:
+    game = make_game()
+    map_name = "crow_map.json"
+    game.map_data = load_map_data(map_name)
+    game.world_entities.setdefault(map_name, [])
+    game.world_drops.setdefault(map_name, [])
+    game.placed_utilities.setdefault(map_name, [])
+    game.enemies.setdefault(map_name, [])
+    game.projectiles.setdefault(map_name, [])
+    spot = game.map_data.fishing_spots[0]
+    game.player.x = spot.left + spot.width / 2.0
+    game.player.y = spot.bottom + spot.height / 2.0
+    game.camera_x = game.player.x
+    game.camera_y = game.player.y
+    game.model.tool_slot = ItemStack("fishing_rod")
+    return game
+
+
 class GameActionTests(unittest.TestCase):
+    def test_clock_formats_wraps_and_advances_at_the_design_rate(self) -> None:
+        game = make_game()
+
+        self.assertEqual("08:00", format_game_time(game.game_minutes))
+        game._advance_game_clock(30.0)
+        self.assertEqual("09:00", format_game_time(game.game_minutes))
+
+        game.game_minutes = 23 * 60 + 59
+        game._advance_game_clock(0.5)
+        self.assertEqual("12:00", format_game_time(game.game_minutes))
+
+    def test_dusk_night_and_dawn_darkness_are_continuous(self) -> None:
+        self.assertEqual("오전", game_time_period(8 * 60))
+        self.assertEqual("오후", game_time_period(18 * 60))
+        self.assertEqual("12:00", format_game_time(12 * 60))
+        self.assertEqual("09:00", format_game_time(21 * 60))
+        self.assertEqual(0.0, night_darkness_progress(17 * 60))
+        self.assertAlmostEqual(0.5, night_darkness_progress(18.5 * 60))
+        self.assertEqual(1.0, night_darkness_progress(20 * 60))
+        self.assertAlmostEqual(0.5, night_darkness_progress(6 * 60))
+        self.assertEqual(0.0, night_darkness_progress(7 * 60))
+
+    def test_holding_torch_automatically_expands_night_vision(self) -> None:
+        game = make_game()
+
+        self.assertEqual(NIGHT_VISION_RADIUS, game._night_vision_radius())
+        game.model.tool_slot = ItemStack("torch")
+        self.assertEqual(TORCH_VISION_RADIUS, game._night_vision_radius())
+
+    def test_night_masks_are_smooth_full_size_rgba_assets(self) -> None:
+        for path in NIGHT_MASK_PATHS.values():
+            data = path.read_bytes()
+            self.assertEqual(b"\x89PNG\r\n\x1a\n", data[:8])
+            self.assertEqual(NIGHT_MASK_SIZE, int.from_bytes(data[16:20], "big"))
+            self.assertEqual(NIGHT_MASK_SIZE, int.from_bytes(data[20:24], "big"))
+            self.assertEqual(6, data[25])  # PNG RGBA colour type.
+
     def test_campfire_and_bedding_install_and_return_to_inventory(self) -> None:
         for item_id in ("campfire", "travel_bedding"):
             game = make_game()
@@ -112,6 +223,55 @@ class GameActionTests(unittest.TestCase):
             self.assertTrue(game._interact_world())
             self.assertEqual(1, game.model.item_count(item_id))
             self.assertEqual([], game.placed_utilities[FIRST_MAP])
+
+    def test_bedding_click_sleeps_from_five_pm_until_eight_am(self) -> None:
+        game = make_game()
+        origin = (game.player.x, game.player.y)
+        other_bedding = PlacedUtility(
+            "travel_bedding", game.player.x - 50.0, game.player.y
+        )
+        bedding = PlacedUtility(
+            "travel_bedding", game.player.x + 80.0, game.player.y
+        )
+        game.placed_utilities[FIRST_MAP] = [bedding, other_bedding]
+        click_x, click_y = game.world_to_screen(bedding.x, bedding.y)
+        game.game_minutes = 17 * 60
+        game.show_toast("이전 알림")
+
+        self.assertTrue(game._try_sleep_at_screen(click_x, click_y))
+        self.assertTrue(game.sleeping)
+        self.assertIs(bedding, game.sleep_bedding)
+        self.assertEqual("", game.toast)
+        self.assertEqual(15 * 60, game.sleep_minutes_remaining)
+
+        game._update_sleep(3.75)
+
+        self.assertFalse(game.sleeping)
+        self.assertEqual([bedding, other_bedding], game.placed_utilities[FIRST_MAP])
+        self.assertEqual(origin, (game.player.x, game.player.y))
+        self.assertEqual(8 * 60, game.game_minutes)
+        self.assertEqual("푹 자고 일어났습니다 · 오전 08:00", game.toast)
+
+    def test_bedding_click_before_five_pm_does_not_start_sleep(self) -> None:
+        game = make_game()
+        bedding = PlacedUtility(
+            "travel_bedding", game.player.x + 80.0, game.player.y
+        )
+        game.placed_utilities[FIRST_MAP] = [bedding]
+        click_x, click_y = game.world_to_screen(bedding.x, bedding.y)
+        game.game_minutes = 16 * 60 + 59
+
+        self.assertTrue(game._try_sleep_at_screen(click_x, click_y))
+        self.assertFalse(game.sleeping)
+        self.assertTrue(game.toast_error)
+
+    def test_clicking_campfire_does_not_consume_primary_attack(self) -> None:
+        game = make_game()
+        campfire = PlacedUtility("campfire", game.player.x + 80.0, game.player.y)
+        game.placed_utilities[FIRST_MAP] = [campfire]
+        click_x, click_y = game.world_to_screen(campfire.x, campfire.y)
+
+        self.assertFalse(game._try_sleep_at_screen(click_x, click_y))
 
     def test_installables_find_open_space_near_the_town_spawn(self) -> None:
         game = make_game()
@@ -191,6 +351,23 @@ class GameActionTests(unittest.TestCase):
         player.update(1.0, set())
         self.assertEqual(68.0, player.sp)
 
+    def test_night_stamina_recovery_is_thirty_percent_slower(self) -> None:
+        self.assertEqual(1.0, stamina_recovery_multiplier(19 * 60 + 59))
+        self.assertEqual(
+            NIGHT_SP_RECOVERY_MULTIPLIER,
+            stamina_recovery_multiplier(20 * 60),
+        )
+        self.assertEqual(
+            NIGHT_SP_RECOVERY_MULTIPLIER,
+            stamina_recovery_multiplier(4 * 60 + 59),
+        )
+        self.assertEqual(1.0, stamina_recovery_multiplier(5 * 60))
+
+        player = Player(sprite_sheet=None)
+        player.sp = 50.0
+        player.update(1.0, set(), None, NIGHT_SP_RECOVERY_MULTIPLIER)
+        self.assertAlmostEqual(62.6, player.sp)
+
     def test_enemy_damage_reduces_hp_and_zero_hp_causes_death(self) -> None:
         player = Player(sprite_sheet=None)
         self.assertEqual(25.0, player.take_damage(25.0))
@@ -243,6 +420,13 @@ class GameActionTests(unittest.TestCase):
         game.species_affinity = {"crow": 100, "wolf": 80, "bear": 40}
         game.ending_variant = "대립 엔딩"
         game.game_over = True
+        game.sleep_bedding = PlacedUtility("travel_bedding", 30.0, 40.0)
+        game.sleep_minutes_remaining = 123.0
+        game.fishing_state = "minigame"
+        game.fishing_capture = 72.0
+        game.fishing_tension = 55.0
+        game.fishing_direction = "left"
+        game.fishing_origin = (100.0, 200.0)
 
         game.restart_game()
 
@@ -259,8 +443,19 @@ class GameActionTests(unittest.TestCase):
         self.assertNotIn("old_map.json", game.projectiles)
         self.assertEqual({"crow": 0, "wolf": 0, "bear": 0}, game.species_affinity)
         self.assertEqual("", game.ending_variant)
+        self.assertEqual(GAME_START_MINUTES, game.game_minutes)
+        self.assertFalse(game.sleeping)
+        self.assertEqual(0.0, game.sleep_minutes_remaining)
+        self.assertEqual("idle", game.fishing_state)
+        self.assertEqual(0.0, game.fishing_capture)
+        self.assertEqual(0.0, game.fishing_tension)
+        self.assertIsNone(game.fishing_direction)
+        self.assertIsNone(game.fishing_origin)
+        self.assertFalse(game.cutscene_active)
+        self.assertFalse(game.lobby_active)
+        self.assertEqual(LOBBY_FADE_SECONDS, game.world_fade_remaining)
 
-    def test_game_over_buttons_retry_or_stop_the_game(self) -> None:
+    def test_game_over_buttons_retry_or_return_to_lobby(self) -> None:
         game = make_game()
         restarted: list[bool] = []
         game.restart_game = lambda: restarted.append(True)
@@ -274,10 +469,11 @@ class GameActionTests(unittest.TestCase):
 
         self.assertTrue(
             game._activate_game_over_button(
-                game.QUIT_BUTTON.cx, game.QUIT_BUTTON.cy
+                game.RETURN_TO_LOBBY_BUTTON.cx, game.RETURN_TO_LOBBY_BUTTON.cy
             )
         )
-        self.assertFalse(game.running)
+        self.assertTrue(game.running)
+        self.assertTrue(game.lobby_active)
 
     def test_player_healing_is_capped_at_max_hp(self) -> None:
         player = Player(sprite_sheet=None)
@@ -343,14 +539,16 @@ class GameActionTests(unittest.TestCase):
         player.y = 5000.0
         crow = EnemyAI.create("crow", 500.0, 500.0)
         positions = []
+        states = []
 
-        for _ in range(30):
+        for _ in range(360):
             crow.update(1.0 / 60.0, open_map, player, 100, 1.0)
             positions.append((crow.x, crow.y))
+            states.append(crow.state)
 
-        self.assertEqual(30, len(set(positions)))
-        self.assertEqual("walk", crow.state)
-        self.assertAlmostEqual(0.5, crow.flight_clock, places=5)
+        self.assertEqual(360, len(set(positions)))
+        self.assertEqual({"walk"}, set(states))
+        self.assertAlmostEqual(6.0, crow.flight_clock, places=5)
 
     def test_flying_crow_does_not_get_stuck_on_ground_collisions(self) -> None:
         blocked_map = SimpleNamespace(
@@ -373,7 +571,7 @@ class GameActionTests(unittest.TestCase):
             "stone_axe": "axe",
             "wooden_pickaxe": "mine",
             "stone_pickaxe": "mine",
-            "fishing_rod": "fish",
+            "fishing_rod": "idle",
             "wooden_sword": "attack",
             "stone_sword": "attack",
             "wooden_spear": "attack",
@@ -1024,6 +1222,123 @@ class GameActionTests(unittest.TestCase):
 
         self.assertEqual(30, game.model.tool_slot.durability)
 
+    def test_fishing_uses_the_harder_tension_window(self) -> None:
+        self.assertEqual(1.0, FISHING_REACTION_SECONDS)
+        self.assertEqual((58.0, 46.0), (
+            FISHING_TENSION_RISE_PER_SECOND,
+            FISHING_TENSION_FALL_PER_SECOND,
+        ))
+        self.assertEqual((42.0, 62.0), (
+            FISHING_SAFE_TENSION_MIN,
+            FISHING_SAFE_TENSION_MAX,
+        ))
+        self.assertEqual((8.0, 90.0, 0.60), (
+            FISHING_DANGER_TENSION_MIN,
+            FISHING_DANGER_TENSION_MAX,
+            FISHING_DANGER_HOLD_SECONDS,
+        ))
+        self.assertEqual((18.0, 14.0), (
+            FISHING_CAPTURE_PER_SECOND,
+            FISHING_CAPTURE_LOSS_PER_SECOND,
+        ))
+
+    def test_fishing_spot_starts_bite_and_spacebar_minigame(self) -> None:
+        game = prepare_fishing_game()
+        game.player.direction = "down_left"
+        origin = (game.player.x, game.player.y)
+
+        self.assertTrue(game._interact_world())
+        self.assertEqual("waiting", game.fishing_state)
+        self.assertEqual(30, game.model.tool_slot.durability)
+        self.assertEqual("down_left", game.player.direction)
+        self.assertEqual(0.0, game.fishing_tension)
+
+        game.player.x += 80.0
+        game.player.y -= 40.0
+        game.player.direction = "up_right"
+        game._update_fishing(0.01)
+        self.assertEqual(origin, (game.player.x, game.player.y))
+        self.assertEqual("down_left", game.player.direction)
+
+        game.fishing_bite_timer = 0.01
+        game._update_fishing(0.02)
+        self.assertEqual("bite", game.fishing_state)
+
+        game._begin_fishing_minigame()
+        self.assertEqual("minigame", game.fishing_state)
+        self.assertEqual(28, game.model.tool_slot.durability)
+        self.assertTrue(game.fishing_reeling)
+        self.assertEqual(0.0, game.fishing_tension)
+
+    def test_fishing_safe_tension_fills_capture_and_awards_raw_fish(self) -> None:
+        game = prepare_fishing_game()
+        game._start_fishing(game.map_data.fishing_spots[0])
+        game._begin_fishing_minigame()
+        game.fishing_tension = 50.0
+        game.fishing_capture = 99.0
+        game.fishing_reeling = False
+
+        game._update_fishing(0.1)
+
+        self.assertEqual("idle", game.fishing_state)
+        self.assertEqual(1, game.model.item_count("fish"))
+        self.assertIn("생선을 낚았습니다", game.toast)
+
+    def test_fishing_fails_on_missed_bite_or_sustained_danger_tension(self) -> None:
+        game = prepare_fishing_game()
+        game._start_fishing(game.map_data.fishing_spots[0])
+        game.fishing_state = "bite"
+        game.fishing_reaction_timer = 0.01
+
+        game._update_fishing(0.02)
+
+        self.assertEqual("idle", game.fishing_state)
+        self.assertEqual(0, game.model.item_count("fish"))
+
+        game._start_fishing(game.map_data.fishing_spots[0])
+        game._begin_fishing_minigame()
+        game.fishing_tension = 100.0
+        game.fishing_danger_timer = 0.84
+        game.fishing_reeling = True
+
+        game._update_fishing(0.02)
+
+        self.assertEqual("idle", game.fishing_state)
+        self.assertEqual(0, game.model.item_count("fish"))
+        self.assertIn("물고기를 놓쳤습니다", game.toast)
+
+    def test_raw_and_cooked_fish_heal_and_campfire_cooks_entire_stack(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        game.player.hp = 80.0
+        game.model.tool_slot = ItemStack("fish", 2)
+
+        game._use_equipped_with_e()
+
+        self.assertEqual(85.0, game.player.hp)
+        self.assertEqual(1, game.model.tool_slot.count)
+
+        bedding = PlacedUtility("travel_bedding", game.player.x, game.player.y)
+        game.placed_utilities[FIRST_MAP] = [bedding]
+        game._key_down(SimpleNamespace(key=p2.SDLK_e, repeat=0))
+        self.assertEqual(90.0, game.player.hp)
+        self.assertIsNone(game.model.tool_slot)
+        self.assertEqual([bedding], game.placed_utilities[FIRST_MAP])
+
+        campfire = PlacedUtility("campfire", game.player.x, game.player.y)
+        game.placed_utilities[FIRST_MAP].append(campfire)
+        game.model.tool_slot = ItemStack("fish")
+        self.assertTrue(game._interact_world())
+        self.assertEqual("cooked_fish", game.model.tool_slot.item_id)
+        self.assertEqual(1, game.model.tool_slot.count)
+        self.assertEqual([bedding, campfire], game.placed_utilities[FIRST_MAP])
+
+        game._use_equipped_with_e()
+
+        self.assertEqual(100.0, game.player.hp)
+        self.assertIsNone(game.model.tool_slot)
+
     def test_armor_absorbs_hits_until_it_breaks_before_hp_is_damaged(self) -> None:
         game = make_game()
         game.model.armor_slot = ItemStack("light_armor", durability=4)
@@ -1043,13 +1358,256 @@ class GameActionTests(unittest.TestCase):
         game = make_game()
         cases = (
             ({"crow": 100, "wolf": 100, "bear": 100}, "완전한 화해 엔딩"),
-            ({"crow": 80, "wolf": 90, "bear": 99}, "공존 엔딩"),
-            ({"crow": 40, "wolf": 70, "bear": 79}, "불안한 휴전 엔딩"),
+            ({"crow": 100, "wolf": 100, "bear": 99}, "대립 엔딩"),
+            ({"crow": 80, "wolf": 90, "bear": 99}, "대립 엔딩"),
+            ({"crow": 40, "wolf": 70, "bear": 79}, "대립 엔딩"),
             ({"crow": 100, "wolf": 39, "bear": 100}, "대립 엔딩"),
         )
         for affinity, expected in cases:
             game.species_affinity = affinity
             self.assertEqual(expected, game._affinity_ending())
+
+    def test_cutscene_assets_are_complete_and_ordered(self) -> None:
+        self.assertEqual(
+            [f"story{index}.png" for index in range(1, 5)],
+            [path.name for path in INTRO_CUTSCENE_PATHS],
+        )
+        self.assertEqual(
+            [f"ending1-{index}.png" for index in range(1, 6)],
+            [path.name for path in CONFLICT_ENDING_CUTSCENE_PATHS],
+        )
+        self.assertEqual(
+            [f"ending2-{index}.png" for index in range(1, 7)],
+            [path.name for path in RECONCILIATION_ENDING_CUTSCENE_PATHS],
+        )
+        for path in (
+            INTRO_CUTSCENE_PATHS
+            + CONFLICT_ENDING_CUTSCENE_PATHS
+            + RECONCILIATION_ENDING_CUTSCENE_PATHS
+        ):
+            self.assertTrue(path.exists(), path)
+
+    def test_intro_cutscene_advances_then_fades_into_lobby(self) -> None:
+        game = make_game()
+        game._start_cutscene(INTRO_CUTSCENE_PATHS, "intro")
+        scene_seconds = CUTSCENE_FADE_SECONDS * 2.0 + CUTSCENE_HOLD_SECONDS
+
+        for expected_index in range(1, 4):
+            game._update_cutscene(scene_seconds)
+            self.assertEqual(expected_index, game.cutscene_index)
+            self.assertTrue(game.cutscene_active)
+
+        game._update_cutscene(scene_seconds)
+
+        self.assertFalse(game.cutscene_active)
+        self.assertTrue(game.lobby_active)
+        self.assertEqual(LOBBY_FADE_SECONDS, game.world_fade_remaining)
+        self.assertTrue(game.running)
+
+    def test_lobby_assets_and_start_quit_transitions(self) -> None:
+        self.assertEqual("The Last Wile Human", GAME_TITLE)
+        self.assertTrue(LOBBY_BACKGROUND_PATH.exists())
+        self.assertTrue(LOBBY_BUTTON_PATH.exists())
+        self.assertEqual(b"\x89PNG\r\n\x1a\n", LOBBY_BACKGROUND_PATH.read_bytes()[:8])
+        self.assertEqual(b"\x89PNG\r\n\x1a\n", LOBBY_BUTTON_PATH.read_bytes()[:8])
+        self.assertEqual(6, LOBBY_BUTTON_PATH.read_bytes()[25])
+
+        game = make_game()
+        game.lobby_active = True
+        game._player_sprite_sheet = None
+        game._map_cache = {FIRST_MAP: game.map_data}
+        game._background_cache = {}
+        game.ui = SimpleNamespace(model=game.model)
+        game.game_minutes = 23 * 60
+        game.species_affinity["crow"] = 80
+        game.ending_variant = "대립 엔딩"
+        start = game.LOBBY_START_BUTTON
+        self.assertGreater(start.cy, WINDOW_HEIGHT / 2 - 40)
+        self.assertGreater(start.cy, game.LOBBY_QUIT_BUTTON.cy)
+
+        self.assertTrue(game._activate_lobby_button(start.cx, start.cy))
+        self.assertEqual("start", game.lobby_transition)
+        game._update_lobby(LOBBY_FADE_SECONDS)
+
+        self.assertFalse(game.lobby_active)
+        self.assertFalse(game.cutscene_active)
+        self.assertEqual(LOBBY_FADE_SECONDS, game.world_fade_remaining)
+        self.assertTrue(game.running)
+        self.assertEqual(GAME_START_MINUTES, game.game_minutes)
+        self.assertEqual(0, game.species_affinity["crow"])
+        self.assertEqual("", game.ending_variant)
+
+        game = make_game()
+        game.lobby_active = True
+        quit_button = game.LOBBY_QUIT_BUTTON
+
+        self.assertTrue(
+            game._activate_lobby_button(quit_button.cx, quit_button.cy)
+        )
+        game._update_lobby(LOBBY_FADE_SECONDS)
+
+        self.assertFalse(game.running)
+        self.assertTrue(game.lobby_active)
+        self.assertEqual("quit", game.lobby_transition)
+
+    def test_ending_cutscene_branch_matches_final_affinity(self) -> None:
+        game = make_game()
+        game.species_affinity = {"crow": 100, "wolf": 100, "bear": 99}
+
+        game._begin_ending_cutscene()
+
+        self.assertEqual("대립 엔딩", game.ending_variant)
+        self.assertEqual(CONFLICT_ENDING_CUTSCENE_PATHS, game.cutscene_sequence)
+
+        game.species_affinity = {"crow": 100, "wolf": 100, "bear": 100}
+        game._begin_ending_cutscene()
+
+        self.assertEqual("완전한 화해 엔딩", game.ending_variant)
+        self.assertEqual(
+            RECONCILIATION_ENDING_CUTSCENE_PATHS,
+            game.cutscene_sequence,
+        )
+
+        game._update_cutscene(
+            game._cutscene_scene_seconds()
+            * len(RECONCILIATION_ENDING_CUTSCENE_PATHS)
+        )
+
+        self.assertTrue(game.running)
+        self.assertFalse(game.cutscene_active)
+        self.assertTrue(game.lobby_active)
+        self.assertEqual(LOBBY_FADE_SECONDS, game.world_fade_remaining)
+
+    def test_cutscene_buttons_pause_resume_toggle_speed_and_skip(self) -> None:
+        import pico2d as p2
+
+        def click(game: Game, rect: Rect) -> None:
+            event = SimpleNamespace(
+                type=p2.SDL_MOUSEBUTTONDOWN,
+                button=p2.SDL_BUTTON_LEFT,
+                x=int(rect.cx),
+                y=WINDOW_HEIGHT - 1 - int(rect.cy),
+            )
+            with patch.object(p2, "get_events", return_value=[event]):
+                game.handle_events()
+
+        for sequence, kind in (
+            (INTRO_CUTSCENE_PATHS, "intro"),
+            (CONFLICT_ENDING_CUTSCENE_PATHS, "ending"),
+        ):
+            with self.subTest(kind=kind):
+                game = make_game()
+                game._start_cutscene(sequence, kind)
+                click(game, game.CUTSCENE_FAST_FORWARD_BUTTON)
+                self.assertTrue(game.cutscene_fast_forward)
+                game.update(1.0)
+                self.assertEqual(2.0, game.cutscene_elapsed)
+
+                click(game, game.CUTSCENE_PAUSE_BUTTON)
+                self.assertTrue(game.cutscene_paused)
+                click(game, Rect(640, 360, 1, 1))
+                advance = SimpleNamespace(type=p2.SDL_KEYDOWN, key=p2.SDLK_RETURN)
+                with patch.object(p2, "get_events", return_value=[advance]):
+                    game.handle_events()
+                game.update(10.0)
+                self.assertEqual(0, game.cutscene_index)
+                self.assertEqual(2.0, game.cutscene_elapsed)
+
+                click(game, game.CUTSCENE_PAUSE_BUTTON)
+                self.assertFalse(game.cutscene_paused)
+                game.update(0.25)
+                self.assertEqual(2.5, game.cutscene_elapsed)
+                click(game, game.CUTSCENE_FAST_FORWARD_BUTTON)
+                self.assertFalse(game.cutscene_fast_forward)
+                game.update(0.5)
+                self.assertEqual(3.0, game.cutscene_elapsed)
+
+                click(game, game.CUTSCENE_FAST_FORWARD_BUTTON)
+                click(game, game.CUTSCENE_PAUSE_BUTTON)
+                click(game, game.CUTSCENE_SKIP_BUTTON)
+                self.assertTrue(game.running)
+                self.assertTrue(game.lobby_active)
+                self.assertFalse(game.cutscene_active)
+                self.assertFalse(game.cutscene_fast_forward)
+                self.assertFalse(game.cutscene_paused)
+
+    def test_gameplay_escape_pauses_until_resume_or_return_to_lobby(self) -> None:
+        import pico2d as p2
+
+        game = make_game()
+        game.pressed.add(p2.SDLK_w)
+        start_time = game.game_minutes
+        start_position = (game.player.x, game.player.y)
+        escape = SimpleNamespace(type=p2.SDL_KEYDOWN, key=p2.SDLK_ESCAPE, repeat=0)
+        repeated_escape = SimpleNamespace(type=p2.SDL_KEYDOWN, key=p2.SDLK_ESCAPE, repeat=1)
+        damage = SimpleNamespace(type=p2.SDL_KEYDOWN, key=p2.SDLK_h, repeat=0)
+
+        def dispatch(*events: object) -> None:
+            with patch.object(p2, "get_events", return_value=events):
+                game.handle_events()
+
+        def click(rect: Rect) -> None:
+            dispatch(SimpleNamespace(
+                type=p2.SDL_MOUSEBUTTONDOWN,
+                button=p2.SDL_BUTTON_LEFT,
+                x=int(rect.cx),
+                y=WINDOW_HEIGHT - 1 - int(rect.cy),
+            ))
+
+        dispatch(escape, repeated_escape, damage)
+        self.assertTrue(game.game_paused)
+        self.assertFalse(game.lobby_active)
+        self.assertFalse(game.pressed)
+        game.update(1.0)
+        self.assertEqual(MAX_HP, game.player.hp)
+        self.assertEqual(start_time, game.game_minutes)
+        self.assertEqual(start_position, (game.player.x, game.player.y))
+
+        click(game.PAUSE_RESUME_BUTTON)
+        self.assertFalse(game.game_paused)
+        game.update(0.5)
+        self.assertGreater(game.game_minutes, start_time)
+
+        dispatch(escape, escape)
+        self.assertFalse(game.game_paused)
+        dispatch(escape)
+        click(game.PAUSE_QUIT_BUTTON)
+        self.assertFalse(game.game_paused)
+        self.assertTrue(game.lobby_active)
+        self.assertTrue(game.running)
+
+    def test_cutscene_escape_leaves_game_running_in_lobby(self) -> None:
+        import pico2d as p2
+
+        escape = SimpleNamespace(type=p2.SDL_KEYDOWN, key=p2.SDLK_ESCAPE, repeat=0)
+        game = make_game()
+        game._start_cutscene(INTRO_CUTSCENE_PATHS, "intro")
+        with patch.object(p2, "get_events", return_value=[escape, escape]):
+            game.handle_events()
+        game.update(LOBBY_FADE_SECONDS)
+        self.assertTrue(game.running)
+        self.assertTrue(game.lobby_active)
+        self.assertFalse(game.cutscene_active)
+        self.assertEqual("", game.lobby_transition)
+
+    def test_window_close_stops_game_in_any_screen(self) -> None:
+        import pico2d as p2
+
+        window_close = SimpleNamespace(type=p2.SDL_QUIT)
+        for screen in ("world", "pause", "lobby", "cutscene", "game_over"):
+            with self.subTest(screen=screen):
+                game = make_game()
+                game.game_paused = screen == "pause"
+                game.lobby_active = screen == "lobby"
+                game.game_over = screen == "game_over"
+                if screen == "cutscene":
+                    game._start_cutscene(INTRO_CUTSCENE_PATHS, "intro")
+                with patch.object(p2, "get_events", return_value=[window_close]):
+                    game.handle_events()
+                self.assertFalse(game.running)
+                self.assertEqual(screen == "lobby", game.lobby_active)
+                self.assertEqual("", game.lobby_transition)
+                self.assertEqual(0.0, game.world_fade_remaining)
 
 
 if __name__ == "__main__":
